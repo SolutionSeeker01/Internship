@@ -17,6 +17,28 @@ logger = get_logger(__name__)
 _kws: Optional[KiteTicker] = None
 _main_loop: Optional[asyncio.AbstractEventLoop] = None
 
+# Track processed ticks for high-level health summaries
+_tick_count: int = 0
+
+
+async def _log_periodic_summary() -> None:
+    """
+    Periodically logs market data pipeline metrics every 60 seconds.
+    Reads connection info from the WebSocket router manager.
+    """
+    global _tick_count
+    from Backend.routers.websocket import manager
+    while True:
+        try:
+            await asyncio.sleep(60)
+            clients_count = len(manager.active_connections)
+            logger.info(f"Processed {_tick_count:,} ticks in last minute. Connected clients: {clients_count}")
+            _tick_count = 0
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error(f"Error in periodic logging task: {e}")
+
 
 def normalize_tick(tick: Dict[str, Any], symbol: str) -> Dict[str, Any]:
     """
@@ -48,6 +70,22 @@ def normalize_tick(tick: Dict[str, Any], symbol: str) -> Dict[str, Any]:
     else:
         timestamp_str = datetime.now().isoformat()
 
+    depth = tick.get("depth")
+    bid_price = None
+    ask_price = None
+    if isinstance(depth, dict):
+        buy_orders = depth.get("buy")
+        if isinstance(buy_orders, list) and len(buy_orders) > 0:
+            first_buy = buy_orders[0]
+            if isinstance(first_buy, dict):
+                bid_price = first_buy.get("price")
+        
+        sell_orders = depth.get("sell")
+        if isinstance(sell_orders, list) and len(sell_orders) > 0:
+            first_sell = sell_orders[0]
+            if isinstance(first_sell, dict):
+                ask_price = first_sell.get("price")
+
     return {
         "symbol": symbol,
         "token": tick.get("instrument_token"),
@@ -58,6 +96,8 @@ def normalize_tick(tick: Dict[str, Any], symbol: str) -> Dict[str, Any]:
         "low": ohlc.get("low", 0.0),
         "close": ohlc.get("close", 0.0),
         "volume": volume,
+        "bid": bid_price,
+        "ask": ask_price,
         "timestamp": timestamp_str,
     }
 
@@ -88,7 +128,9 @@ def on_ticks(ws: KiteTicker, ticks: List[Dict[str, Any]]) -> None:
     Normalizes ticks, updates the shared in-memory store, and schedules 
     the WebSocket broadcast on the main asyncio event loop thread-safely.
     """
-    logger.debug(f"Received package of {len(ticks)} ticks.")
+    global _tick_count
+    _tick_count += len(ticks)
+    
     for tick in ticks:
         token = tick.get("instrument_token")
         if token is None:
@@ -97,8 +139,6 @@ def on_ticks(ws: KiteTicker, ticks: List[Dict[str, Any]]) -> None:
             
         symbol = get_symbol(token)
         if not symbol:
-            # Drop ticks for tokens that are not registered in the active subscriptions
-            logger.debug(f"Received tick for untracked instrument token: {token}")
             continue
 
         try:
@@ -145,6 +185,9 @@ def start_market_data_service(loop: asyncio.AbstractEventLoop) -> None:
     
     # Store the reference to the main thread's asyncio event loop for thread-safe cross-thread calls
     _main_loop = loop
+    
+    # Schedule the periodic logging coroutine on the main loop
+    _main_loop.create_task(_log_periodic_summary())
     
     try:
         # Create new KiteTicker using the validated connection settings

@@ -7,7 +7,11 @@
 /* -------------------------------------------------------------
    CONFIGURATION
    ------------------------------------------------------------- */
-const WS_URL             = 'ws://127.0.0.1:8000/ws';
+// Dynamically derive the WebSocket URL based on the hostname of the page.
+// This allows other devices (like phones/tablets) on the same local network
+// to connect automatically to the server using the laptop's network IP (e.g. 192.168.x.x),
+// while still resolving to 'localhost' when accessing locally.
+const WS_URL             = `ws://${window.location.hostname}:8000/ws`;
 const RECONNECT_DELAY_MS = 5_000;
 
 const INDICES = new Set(['NIFTY50', 'BANKNIFTY', 'SENSEX']);
@@ -196,10 +200,10 @@ function updateIndexCard(symbol, data) {
 function updateStockRow(symbol, data) {
     const ltpEl    = getEl(`stock-ltp-${symbol}`);
     const changeEl = getEl(`stock-change-${symbol}`);
+    const bidEl    = getEl(`stock-bid-${symbol}`);
+    const askEl    = getEl(`stock-ask-${symbol}`);
     const volEl    = getEl(`stock-volume-${symbol}`);
     const openEl   = getEl(`stock-open-${symbol}`);
-    const highEl   = getEl(`stock-high-${symbol}`);
-    const lowEl    = getEl(`stock-low-${symbol}`);
     const closeEl  = getEl(`stock-close-${symbol}`);
 
     const ltp    = data.ltp    != null ? Number(data.ltp)    : null;
@@ -219,10 +223,10 @@ function updateStockRow(symbol, data) {
         if (change != null) applyChangeClass(changeEl, change);
     }
 
+    if (bidEl)   bidEl.textContent   = formatPrice(data.bid);
+    if (askEl)   askEl.textContent   = formatPrice(data.ask);
     if (volEl)   volEl.textContent   = formatVolume(data.volume);
     if (openEl)  openEl.textContent  = formatPrice(data.open);
-    if (highEl)  highEl.textContent  = formatPrice(data.high);
-    if (lowEl)   lowEl.textContent   = formatPrice(data.low);
     if (closeEl) closeEl.textContent = formatPrice(data.close);
 
     if (ltp != null) previousLtp.set(symbol, ltp);
