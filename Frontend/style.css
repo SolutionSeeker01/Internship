@@ -1,73 +1,48 @@
 /* =====================================================
-   ROOT: CSS VARIABLES & DESIGN TOKENS
+   ROOT: DESIGN TOKENS (LIGHT THEME TRADING SYSTEM)
    ===================================================== */
 :root {
-    /* Background Layers */
-    --bg-primary:      #0d0f14;
-    --bg-secondary:    #131720;
-    --bg-card:         #1a1f2e;
-    --bg-card-hover:   #1f2638;
-    --bg-table-head:   #141824;
-    --bg-row-alt:      #151a27;
-    --bg-row-hover:    #1e2436;
+    /* Premium Light Theme Palette */
+    --bg-page:        #f5f7fb; /* Light gray page background */
+    --bg-card:        #ffffff; /* White cards & table backgrounds */
+    --bg-header:      #111827; /* Dark header matching reference image */
+    --bg-table-alt:   #fafafa; /* Subtle alternating row gray */
+    --bg-table-hover: #f3f4f6; /* Gray highlight on hover */
 
-    /* Border */
-    --border-default:  #252c3f;
-    --border-subtle:   #1e2538;
+    /* Borders & Dividers */
+    --border-color:   #e5e7eb; /* Soft border gray */
 
-    /* Text */
-    --text-primary:    #e8eaf0;
-    --text-secondary:  #8b93a8;
-    --text-muted:      #545d72;
-    --text-heading:    #ffffff;
+    /* Primary & Secondary Typography */
+    --text-primary:   #111827; /* Near black text */
+    --text-secondary: #6b7280; /* Neutral gray */
+    --text-muted:      #9ca3af; /* Light gray */
 
-    /* Price Colors */
-    --color-positive: #00c48c;
-    --color-negative: #ff5252;
-    --color-neutral:  #8b93a8;
+    /* Directional Indicator Colors */
+    --color-positive: #16a34a; /* Emerald green */
+    --color-negative: #dc2626; /* Crimson red */
 
-    /* Accent */
-    --accent-blue:    #3d7eff;
-    --accent-glow:    rgba(61, 126, 255, 0.12);
+    /* Index Card Sparkline Defaults */
+    --color-sparkline-pos: #16a34a;
+    --color-sparkline-neg: #dc2626;
 
-    /* Status */
-    --status-connected:    #00c48c;
-    --status-disconnected: #ff5252;
+    /* Theme Accents */
+    --accent-blue:    #3b82f6;
+    --accent-bg:      #eff6ff;
 
-    /* Shadows */
-    --shadow-card:    0 2px 12px rgba(0, 0, 0, 0.4);
-    --shadow-card-hover: 0 6px 24px rgba(0, 0, 0, 0.55);
-    --shadow-header:  0 1px 0 var(--border-default);
+    /* Shadows & Radii */
+    --shadow-premium: 0 1px 3px rgba(0, 0, 0, 0.05), 0 10px 20px rgba(0, 0, 0, 0.04);
+    --radius-lg:      16px;
+    --radius-md:      8px;
+    --radius-sm:      4px;
 
-    /* Spacing */
-    --space-xs:   4px;
-    --space-sm:   8px;
+    /* Spacing variables */
     --space-md:   16px;
     --space-lg:   24px;
     --space-xl:   32px;
-    --space-2xl:  48px;
-
-    /* Borders */
-    --radius-sm:  6px;
-    --radius-md:  10px;
-    --radius-lg:  14px;
-
-    /* Typography */
-    --font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-    --font-size-xs:   11px;
-    --font-size-sm:   13px;
-    --font-size-md:   14px;
-    --font-size-lg:   16px;
-    --font-size-xl:   20px;
-    --font-size-2xl:  28px;
-
-    /* Transitions */
-    --transition-fast: 150ms ease;
-    --transition-base: 220ms ease;
 }
 
 /* =====================================================
-   RESET & BASE
+   RESET & BASE STYLING
    ===================================================== */
 *, *::before, *::after {
     box-sizing: border-box;
@@ -75,110 +50,125 @@
     padding: 0;
 }
 
-html {
-    font-size: 16px;
-    scroll-behavior: smooth;
-}
-
 body {
-    font-family: var(--font-family);
-    font-size: var(--font-size-md);
-    background-color: var(--bg-primary);
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    background-color: var(--bg-page);
     color: var(--text-primary);
-    line-height: 1.6;
+    line-height: 1.5;
     min-height: 100vh;
     overflow-y: scroll;
     -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
 }
 
-/* =====================================================
-   UTILITY CLASSES
-   ===================================================== */
-.text-right  { text-align: right; }
+/* Alignments */
+.text-right { text-align: right; }
 .font-medium { font-weight: 500; }
 
-/* Price state classes applied by JavaScript */
-.positive {
-    color: var(--color-positive);
-}
-
-.negative {
-    color: var(--color-negative);
-}
-
-.neutral {
-    color: var(--color-neutral);
-}
+/* Price Coloring Classes */
+.positive { color: var(--color-positive) !important; }
+.negative { color: var(--color-negative) !important; }
+.neutral  { color: var(--text-secondary) !important; }
 
 /* =====================================================
-   HEADER
+   HEADER BAR (DARK DESIGN FROM THE REFERENCE)
    ===================================================== */
 .app-header {
+    background-color: var(--bg-header);
+    color: #ffffff;
     position: sticky;
     top: 0;
     z-index: 100;
-    background-color: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-default);
-    box-shadow: var(--shadow-header);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .header-container {
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: 0 var(--space-lg);
+    height: 60px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    max-width: 1440px;
-    margin: 0 auto;
-    padding: var(--space-md) var(--space-xl);
-    height: 60px;
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.header-icon {
+    color: var(--accent-blue);
 }
 
 .app-header h1 {
-    font-size: var(--font-size-lg);
-    font-weight: 700;
-    color: var(--text-heading);
-    letter-spacing: -0.3px;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.2px;
+    color: #ffffff;
 }
 
-/* =====================================================
-   CONNECTION STATUS INDICATOR
-   ===================================================== */
-.status-indicator-container {
+/* Connection Status & Clock */
+.header-right {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
-}
-
-.status-text {
-    font-size: var(--font-size-sm);
-    font-weight: 500;
-    color: var(--text-secondary);
-    letter-spacing: 0.2px;
+    gap: var(--space-lg);
 }
 
 .status-dot {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
-    flex-shrink: 0;
-    transition: background-color var(--transition-base),
-                box-shadow var(--transition-base);
+    transition: background-color 0.2s ease;
 }
 
 .status-dot.connected {
-    background-color: var(--status-connected);
-    box-shadow: 0 0 0 3px rgba(0, 196, 140, 0.2);
-    animation: pulse-green 2.5s infinite;
+    background-color: #10b981;
+    box-shadow: 0 0 8px #10b981;
 }
 
 .status-dot.disconnected {
-    background-color: var(--status-disconnected);
-    box-shadow: 0 0 0 3px rgba(255, 82, 82, 0.2);
+    background-color: #ef4444;
+    box-shadow: 0 0 8px #ef4444;
 }
 
-@keyframes pulse-green {
-    0%, 100% { box-shadow: 0 0 0 3px rgba(0, 196, 140, 0.2); }
-    50%       { box-shadow: 0 0 0 5px rgba(0, 196, 140, 0.08); }
+.status-text {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.8px;
+    color: #9ca3af;
+}
+
+.status-dot.connected + .status-text {
+    color: #10b981;
+}
+
+.status-dot.disconnected + .status-text {
+    color: #ef4444;
+}
+
+.header-clock {
+    font-size: 13px;
+    font-weight: 500;
+    color: #9ca3af;
+    font-variant-numeric: tabular-nums;
+}
+
+.theme-toggle {
+    background: none;
+    border: none;
+    color: #9ca3af;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    border-radius: var(--radius-sm);
+    transition: color 0.2s ease;
+}
+
+.theme-toggle:hover {
+    color: #ffffff;
 }
 
 /* =====================================================
@@ -187,152 +177,140 @@ body {
 .dashboard-container {
     max-width: 1440px;
     margin: 0 auto;
-    padding: var(--space-lg) var(--space-xl) var(--space-2xl);
+    padding: var(--space-lg);
     display: flex;
     flex-direction: column;
-    gap: var(--space-xl);
+    gap: var(--space-lg);
 }
 
-/* =====================================================
-   SECTION HEADINGS
-   ===================================================== */
+/* Section Headings */
 .indices-section h2,
 .stocks-section h2 {
-    font-size: var(--font-size-sm);
-    font-weight: 600;
-    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-secondary);
     text-transform: uppercase;
-    letter-spacing: 0.9px;
-    margin-bottom: var(--space-md);
+    letter-spacing: 1px;
+    margin-bottom: 12px;
 }
 
 /* =====================================================
-   INDICES SECTION: CARDS GRID
+   INDICES CARDS LAYOUT
    ===================================================== */
-.indices-section {
-    width: 100%;
-}
-
 .indices-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: var(--space-md);
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
 }
 
-/* =====================================================
-   INDEX CARD
-   ===================================================== */
 .index-card {
     background-color: var(--bg-card);
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--border-color);
     border-radius: var(--radius-lg);
-    padding: var(--space-lg);
-    box-shadow: var(--shadow-card);
-    cursor: default;
-    transition: background-color var(--transition-base),
-                border-color var(--transition-base),
-                box-shadow var(--transition-base),
-                transform var(--transition-base);
+    padding: 20px 24px;
+    box-shadow: var(--shadow-premium);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
     position: relative;
-    overflow: hidden;
-}
-
-.index-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background: linear-gradient(90deg, var(--accent-blue), transparent);
-    opacity: 0;
-    transition: opacity var(--transition-base);
+    transition: transform 0.2s ease, border-color 0.2s ease;
 }
 
 .index-card:hover {
-    background-color: var(--bg-card-hover);
-    border-color: var(--border-default);
-    box-shadow: var(--shadow-card-hover);
     transform: translateY(-2px);
-}
-
-.index-card:hover::before {
-    opacity: 1;
+    border-color: #d1d5db;
 }
 
 .index-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: var(--space-md);
 }
 
 .index-symbol {
-    font-size: var(--font-size-sm);
+    font-size: 13px;
     font-weight: 600;
-    color: var(--text-secondary);
-    letter-spacing: 0.4px;
+    color: var(--text-primary);
     text-transform: uppercase;
 }
 
 .index-badge {
-    font-size: var(--font-size-xs);
-    font-weight: 600;
+    font-size: 10px;
+    font-weight: 700;
     color: var(--accent-blue);
-    background-color: var(--accent-glow);
-    border: 1px solid rgba(61, 126, 255, 0.2);
+    background-color: var(--accent-bg);
     border-radius: var(--radius-sm);
-    padding: 2px 7px;
-    letter-spacing: 0.5px;
+    padding: 2px 6px;
+}
+
+/* Index Values and Sparkline Wrapper */
+.index-body-wrapper {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
 }
 
 .index-values {
     display: flex;
     flex-direction: column;
-    gap: var(--space-xs);
 }
 
 .index-ltp {
-    font-size: var(--font-size-2xl);
+    font-size: 24px;
     font-weight: 700;
-    color: var(--text-heading);
-    letter-spacing: -0.8px;
-    line-height: 1.1;
-    font-variant-numeric: tabular-nums;
-    transition: color var(--transition-fast);
+    color: var(--text-primary);
+    letter-spacing: -0.5px;
 }
 
 .index-change {
-    font-size: var(--font-size-md);
-    font-weight: 500;
-    color: var(--color-neutral);
-    font-variant-numeric: tabular-nums;
-    transition: color var(--transition-fast);
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* Index Card Sparkline Container */
+.index-sparkline {
+    width: 100px;
+    height: 30px;
+    margin-bottom: 4px;
+}
+
+.sparkline-svg {
+    width: 100%;
+    height: 100%;
+}
+
+/* Bind sparkline color to card value status */
+.index-card.card-positive .sparkline-svg path {
+    stroke: var(--color-positive);
+}
+
+.index-card.card-negative .sparkline-svg path {
+    stroke: var(--color-negative);
+}
+
+.index-card.card-neutral .sparkline-svg path {
+    stroke: var(--text-secondary);
 }
 
 /* =====================================================
-   STOCKS SECTION: TABLE
+   WATCHLIST STOCKS TABLE
    ===================================================== */
-.stocks-section {
-    width: 100%;
-}
-
 .table-responsive {
-    width: 100%;
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-premium);
     overflow-x: auto;
     overflow-y: auto;
     max-height: calc(100vh - 280px);
-    border-radius: var(--radius-lg);
-    border: 1px solid var(--border-subtle);
-    box-shadow: var(--shadow-card);
-    /* Custom scrollbar for webkit */
-    scrollbar-width: thin;
-    scrollbar-color: var(--border-default) transparent;
 }
 
+/* Webkit scrollbar optimizations */
 .table-responsive::-webkit-scrollbar {
-    height: 6px;
-    width: 6px;
+    width: 8px;
+    height: 8px;
 }
 
 .table-responsive::-webkit-scrollbar-track {
@@ -340,31 +318,29 @@ body {
 }
 
 .table-responsive::-webkit-scrollbar-thumb {
-    background-color: var(--border-default);
-    border-radius: 3px;
+    background-color: #d1d5db;
+    border-radius: 4px;
 }
 
 .stocks-table {
     width: 100%;
     border-collapse: collapse;
-    table-layout: auto;
     font-variant-numeric: tabular-nums;
 }
 
-/* Sticky Header */
+/* Headers */
 .stocks-table th {
     position: sticky;
     top: 0;
     z-index: 10;
-    background-color: var(--bg-table-head);
-    font-size: var(--font-size-xs);
-    font-weight: 600;
-    color: var(--text-muted);
+    background-color: #fafafa;
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.8px;
-    padding: var(--space-md) var(--space-lg);
-    border-bottom: 1px solid var(--border-default);
-    white-space: nowrap;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border-color);
     user-select: none;
 }
 
@@ -372,122 +348,210 @@ body {
     text-align: left;
 }
 
-/* Table Body Rows */
+/* Table body rows */
 .stocks-table tbody tr {
-    border-bottom: 1px solid var(--border-subtle);
-    transition: background-color var(--transition-fast);
+    border-bottom: 1px solid var(--border-color);
+    background-color: #ffffff;
+    transition: background-color 0.2s ease;
 }
 
-/* Zebra Striping */
 .stocks-table tbody tr:nth-child(even) {
-    background-color: var(--bg-row-alt);
+    background-color: #fafafa;
 }
 
 .stocks-table tbody tr:last-child {
     border-bottom: none;
 }
 
+/* Row Hover Highlight */
 .stocks-table tbody tr:hover {
-    background-color: var(--bg-row-hover);
+    background-color: var(--bg-table-hover);
 }
 
 .stocks-table td {
-    font-size: var(--font-size-md);
-    color: var(--text-primary);
-    padding: var(--space-md) var(--space-lg);
-    white-space: nowrap;
-    transition: color var(--transition-fast);
-}
-
-.stock-symbol {
-    font-weight: 600;
-    color: var(--text-heading);
-    letter-spacing: 0.2px;
-    font-size: var(--font-size-md);
-}
-
-.stock-change {
+    font-size: 13px;
     font-weight: 500;
+    color: var(--text-primary);
+    padding: 14px 20px;
+    white-space: nowrap;
+}
+
+/* Row Elements Formatting */
+.stock-symbol {
+    font-weight: 600 !important;
+    display: flex;
+    align-items: center;
+}
+
+/* Stars */
+.star-icon {
+    font-size: 16px;
+    margin-right: 10px;
+    color: #d1d5db;
+    user-select: none;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.star-icon.star-active {
+    color: #eab308; /* Gold solid star */
+}
+
+.stock-ltp {
+    font-weight: 600;
+}
+
+/* Bid/Ask Colorings */
+.stock-bid {
+    color: var(--color-positive);
+}
+
+.stock-ask {
+    color: var(--color-negative);
 }
 
 .stock-volume {
     color: var(--text-secondary);
-    font-size: var(--font-size-sm);
 }
 
-.stock-high { color: var(--color-positive); }
-.stock-low  { color: var(--color-negative); }
+/* =====================================================
+   LEADER HIGHLIGHT STYLES
+   ===================================================== */
+.stocks-table tbody tr.leader-row {
+    background-color: #f0fdf4 !important; /* Extremely light green row */
+}
+
+.stocks-table tbody tr.leader-row td {
+    border-top: 1.5px solid rgba(22, 163, 74, 0.25);
+    border-bottom: 1.5px solid rgba(22, 163, 74, 0.25);
+}
+
+.leader-badge {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: #15803d;
+    background-color: #dcfce7;
+    border: 1px solid rgba(21, 128, 61, 0.2);
+    border-radius: var(--radius-sm);
+    padding: 1px 5px;
+    margin-left: 8px;
+    text-transform: uppercase;
+}
 
 /* =====================================================
-   FLASH ANIMATION (triggered by JS class toggling)
+   TICK PRICE FLASH ANIMATIONS (SMOOTH TRANSITIONS)
    ===================================================== */
 @keyframes flash-positive {
-    0%   { background-color: rgba(0, 196, 140, 0.18); }
+    0%   { background-color: rgba(22, 163, 74, 0.2); }
     100% { background-color: transparent; }
 }
 
 @keyframes flash-negative {
-    0%   { background-color: rgba(255, 82, 82, 0.18); }
+    0%   { background-color: rgba(220, 38, 38, 0.2); }
     100% { background-color: transparent; }
 }
 
-.flash-up   { animation: flash-positive 600ms ease-out forwards; }
-.flash-down { animation: flash-negative 600ms ease-out forwards; }
+.flash-up   { animation: flash-positive 500ms ease-out forwards; }
+.flash-down { animation: flash-negative 500ms ease-out forwards; }
 
 /* =====================================================
-   FOOTER
+   MARKET BREADTH FOOTER
    ===================================================== */
 .app-footer {
-    border-top: 1px solid var(--border-subtle);
-    background-color: var(--bg-secondary);
+    border-top: 1px solid var(--border-color);
+    background-color: var(--bg-card);
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.02);
 }
 
 .footer-container {
     max-width: 1440px;
     margin: 0 auto;
-    padding: var(--space-md) var(--space-xl);
-    text-align: center;
+    padding: 12px var(--space-lg);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 13px;
+    font-weight: 500;
 }
 
-.app-footer p {
-    font-size: var(--font-size-xs);
-    color: var(--text-muted);
-    letter-spacing: 0.3px;
+.market-breadth {
+    display: flex;
+    gap: var(--space-lg);
+}
+
+.breadth-item {
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.breadth-item.advances span {
+    color: var(--color-positive);
+}
+
+.breadth-item.declines span {
+    color: var(--color-negative);
+}
+
+.breadth-item.unchanged span {
+    color: var(--text-secondary);
+}
+
+/* Last updated details */
+.footer-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.last-updated span {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+}
+
+.refresh-btn {
+    font-size: 16px;
+    cursor: pointer;
+    user-select: none;
+    transition: transform 0.2s ease;
+}
+
+.refresh-btn:hover {
+    transform: rotate(90deg);
 }
 
 /* =====================================================
-   RESPONSIVE: TABLET
+   RESPONSIVE LAYOUT OVERRIDES
    ===================================================== */
 @media (max-width: 1024px) {
-    .header-container,
-    .dashboard-container,
-    .footer-container {
-        padding-left: var(--space-lg);
-        padding-right: var(--space-lg);
-    }
-}
-
-/* =====================================================
-   RESPONSIVE: SMALL TABLET / LARGE MOBILE
-   ===================================================== */
-@media (max-width: 768px) {
     .header-container,
     .dashboard-container,
     .footer-container {
         padding-left: var(--space-md);
         padding-right: var(--space-md);
     }
+}
 
-    .app-header h1 {
-        font-size: var(--font-size-md);
+@media (max-width: 768px) {
+    .header-container,
+    .dashboard-container,
+    .footer-container {
+        padding-left: 12px;
+        padding-right: 12px;
+    }
+
+    .indices-grid {
+        grid-template-columns: 1fr;
     }
 
     .index-ltp {
-        font-size: var(--font-size-xl);
+        font-size: 20px;
     }
 
     .stocks-table th,
     .stocks-table td {
-        padding: var(--space-sm) var(--space-md);
+        padding: 10px 12px;
     }
 }
