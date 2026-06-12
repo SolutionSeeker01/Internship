@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Market Dashboard</title>
+    <!-- Google Fonts for Modern Typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Link external styling stylesheet -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header class="app-header">
+        <div class="header-container">
+            <h1>Market Dashboard</h1>
+            <!-- Connection status indicator -->
+            <div class="status-indicator-container">
+                <span id="connection-status-dot" class="status-dot disconnected"></span>
+                <span id="connection-status-text" class="status-text">Disconnected</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="dashboard-container">
+        <!-- Top Section: Indices Grid (Horizontal Cards Layout) -->
+        <section class="indices-section" aria-label="Indices Section">
+            <h2>Market Indices</h2>
+            <div class="indices-grid" id="indices-container">
+                
+                <!-- NIFTY50 Index Card -->
+                <div class="index-card" id="index-card-NIFTY50" data-symbol="NIFTY50">
+                    <div class="index-header">
+                        <span class="index-symbol">NIFTY 50</span>
+                        <span class="index-badge">NSE</span>
+                    </div>
+                    <div class="index-values">
+                        <div class="index-ltp" id="index-ltp-NIFTY50">--</div>
+                        <div class="index-change" id="index-change-NIFTY50">--</div>
+                    </div>
+                </div>
+
+                <!-- BANKNIFTY Index Card -->
+                <div class="index-card" id="index-card-BANKNIFTY" data-symbol="BANKNIFTY">
+                    <div class="index-header">
+                        <span class="index-symbol">NIFTY BANK</span>
+                        <span class="index-badge">NSE</span>
+                    </div>
+                    <div class="index-values">
+                        <div class="index-ltp" id="index-ltp-BANKNIFTY">--</div>
+                        <div class="index-change" id="index-change-BANKNIFTY">--</div>
+                    </div>
+                </div>
+
+                <!-- SENSEX Index Card -->
+                <div class="index-card" id="index-card-SENSEX" data-symbol="SENSEX">
+                    <div class="index-header">
+                        <span class="index-symbol">SENSEX</span>
+                        <span class="index-badge">BSE</span>
+                    </div>
+                    <div class="index-values">
+                        <div class="index-ltp" id="index-ltp-SENSEX">--</div>
+                        <div class="index-change" id="index-change-SENSEX">--</div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- Bottom Section: Stocks List (Vertical Table Layout) -->
+        <section class="stocks-section" aria-label="Stocks Section">
+            <h2>Watchlist Stocks</h2>
+            <div class="table-responsive">
+                <table class="stocks-table" id="watchlist-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Symbol</th>
+                            <th scope="col" class="text-right">LTP</th>
+                            <th scope="col" class="text-right">Change %</th>
+                            <th scope="col" class="text-right">Volume</th>
+                            <th scope="col" class="text-right">Open</th>
+                            <th scope="col" class="text-right">High</th>
+                            <th scope="col" class="text-right">Low</th>
+                            <th scope="col" class="text-right">Close</th>
+                        </tr>
+                    </thead>
+                    <tbody id="stocks-table-body">
+                        <!-- RELIANCE Stock Row -->
+                        <tr class="stock-row" id="stock-row-RELIANCE" data-symbol="RELIANCE">
+                            <td class="stock-symbol font-medium">RELIANCE</td>
+                            <td class="stock-ltp text-right" id="stock-ltp-RELIANCE">--</td>
+                            <td class="stock-change text-right" id="stock-change-RELIANCE">--</td>
+                            <td class="stock-volume text-right" id="stock-volume-RELIANCE">--</td>
+                            <td class="stock-open text-right" id="stock-open-RELIANCE">--</td>
+                            <td class="stock-high text-right" id="stock-high-RELIANCE">--</td>
+                            <td class="stock-low text-right" id="stock-low-RELIANCE">--</td>
+                            <td class="stock-close text-right" id="stock-close-RELIANCE">--</td>
+                        </tr>
+
+                        <!-- HDFCBANK Stock Row -->
+                        <tr class="stock-row" id="stock-row-HDFCBANK" data-symbol="HDFCBANK">
+                            <td class="stock-symbol font-medium">HDFCBANK</td>
+                            <td class="stock-ltp text-right" id="stock-ltp-HDFCBANK">--</td>
+                            <td class="stock-change text-right" id="stock-change-HDFCBANK">--</td>
+                            <td class="stock-volume text-right" id="stock-volume-HDFCBANK">--</td>
+                            <td class="stock-open text-right" id="stock-open-HDFCBANK">--</td>
+                            <td class="stock-high text-right" id="stock-high-HDFCBANK">--</td>
+                            <td class="stock-low text-right" id="stock-low-HDFCBANK">--</td>
+                            <td class="stock-close text-right" id="stock-close-HDFCBANK">--</td>
+                        </tr>
+
+                        <!-- ICICIBANK Stock Row -->
+                        <tr class="stock-row" id="stock-row-ICICIBANK" data-symbol="ICICIBANK">
+                            <td class="stock-symbol font-medium">ICICIBANK</td>
+                            <td class="stock-ltp text-right" id="stock-ltp-ICICIBANK">--</td>
+                            <td class="stock-change text-right" id="stock-change-ICICIBANK">--</td>
+                            <td class="stock-volume text-right" id="stock-volume-ICICIBANK">--</td>
+                            <td class="stock-open text-right" id="stock-open-ICICIBANK">--</td>
+                            <td class="stock-high text-right" id="stock-high-ICICIBANK">--</td>
+                            <td class="stock-low text-right" id="stock-low-ICICIBANK">--</td>
+                            <td class="stock-close text-right" id="stock-close-ICICIBANK">--</td>
+                        </tr>
+
+                        <!-- BHARTIARTL Stock Row -->
+                        <tr class="stock-row" id="stock-row-BHARTIARTL" data-symbol="BHARTIARTL">
+                            <td class="stock-symbol font-medium">BHARTIARTL</td>
+                            <td class="stock-ltp text-right" id="stock-ltp-BHARTIARTL">--</td>
+                            <td class="stock-change text-right" id="stock-change-BHARTIARTL">--</td>
+                            <td class="stock-volume text-right" id="stock-volume-BHARTIARTL">--</td>
+                            <td class="stock-open text-right" id="stock-open-BHARTIARTL">--</td>
+                            <td class="stock-high text-right" id="stock-high-BHARTIARTL">--</td>
+                            <td class="stock-low text-right" id="stock-low-BHARTIARTL">--</td>
+                            <td class="stock-close text-right" id="stock-close-BHARTIARTL">--</td>
+                        </tr>
+
+                        <!-- INFY Stock Row -->
+                        <tr class="stock-row" id="stock-row-INFY" data-symbol="INFY">
+                            <td class="stock-symbol font-medium">INFY</td>
+                            <td class="stock-ltp text-right" id="stock-ltp-INFY">--</td>
+                            <td class="stock-change text-right" id="stock-change-INFY">--</td>
+                            <td class="stock-volume text-right" id="stock-volume-INFY">--</td>
+                            <td class="stock-open text-right" id="stock-open-INFY">--</td>
+                            <td class="stock-high text-right" id="stock-high-INFY">--</td>
+                            <td class="stock-low text-right" id="stock-low-INFY">--</td>
+                            <td class="stock-close text-right" id="stock-close-INFY">--</td>
+                        </tr>
+
+                        <!-- TCS Stock Row -->
+                        <tr class="stock-row" id="stock-row-TCS" data-symbol="TCS">
+                            <td class="stock-symbol font-medium">TCS</td>
+                            <td class="stock-ltp text-right" id="stock-ltp-TCS">--</td>
+                            <td class="stock-change text-right" id="stock-change-TCS">--</td>
+                            <td class="stock-volume text-right" id="stock-volume-TCS">--</td>
+                            <td class="stock-open text-right" id="stock-open-TCS">--</td>
+                            <td class="stock-high text-right" id="stock-high-TCS">--</td>
+                            <td class="stock-low text-right" id="stock-low-TCS">--</td>
+                            <td class="stock-close text-right" id="stock-close-TCS">--</td>
+                        </tr>
+
+                        <!-- HINDUNILVR Stock Row -->
+                        <tr class="stock-row" id="stock-row-HINDUNILVR" data-symbol="HINDUNILVR">
+                            <td class="stock-symbol font-medium">HINDUNILVR</td>
+                            <td class="stock-ltp text-right" id="stock-ltp-HINDUNILVR">--</td>
+                            <td class="stock-change text-right" id="stock-change-HINDUNILVR">--</td>
+                            <td class="stock-volume text-right" id="stock-volume-HINDUNILVR">--</td>
+                            <td class="stock-open text-right" id="stock-open-HINDUNILVR">--</td>
+                            <td class="stock-high text-right" id="stock-high-HINDUNILVR">--</td>
+                            <td class="stock-low text-right" id="stock-low-HINDUNILVR">--</td>
+                            <td class="stock-close text-right" id="stock-close-HINDUNILVR">--</td>
+                        </tr>
+
+                        <!-- BAJFINANCE Stock Row -->
+                        <tr class="stock-row" id="stock-row-BAJFINANCE" data-symbol="BAJFINANCE">
+                            <td class="stock-symbol font-medium">BAJFINANCE</td>
+                            <td class="stock-ltp text-right" id="stock-ltp-BAJFINANCE">--</td>
+                            <td class="stock-change text-right" id="stock-change-BAJFINANCE">--</td>
+                            <td class="stock-volume text-right" id="stock-volume-BAJFINANCE">--</td>
+                            <td class="stock-open text-right" id="stock-open-BAJFINANCE">--</td>
+                            <td class="stock-high text-right" id="stock-high-BAJFINANCE">--</td>
+                            <td class="stock-low text-right" id="stock-low-BAJFINANCE">--</td>
+                            <td class="stock-close text-right" id="stock-close-BAJFINANCE">--</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <footer class="app-footer">
+        <div class="footer-container">
+            <p>V1 - Live Market Ticker Dashboard. Data updates are streamed instantly.</p>
+        </div>
+    </footer>
+
+    <!-- Load external application script -->
+    <script src="app.js"></script>
+</body>
+</html>

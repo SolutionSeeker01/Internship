@@ -1,0 +1,79 @@
+from contextlib import asynccontextmanager
+from typing import Dict
+from fastapi import FastAPI
+
+# Initialize centralized logging before importing local modules that define their own loggers
+from Backend.utils.logger import get_logger, setup_logging
+setup_logging()
+logger = get_logger(__name__)
+
+# Local imports
+from Backend.routers.websocket import router as ws_router
+from Backend.market_data.kite_client import start_market_data_service
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Asynchronous context manager to manage application startup and shutdown events.
+    
+    FastAPI lifespan events are the modern, recommended approach replacing 
+    deprecated @app.on_event("startup"/"shutdown") handlers.
+    """
+    logger.info("Starting up FastAPI application lifespan context...")
+    
+    # Initialize and start the background Zerodha KiteTicker service
+    try:
+        import asyncio
+        loop = asyncio.get_running_loop()
+        start_market_data_service(loop)
+        logger.info("Market data service spawned successfully in background thread.")
+    except Exception:
+        logger.exception(
+            "Failed to start market data service."
+        )
+        raise
+
+    yield  # Hand over control to run the FastAPI server
+
+    # Clean up operations go here (e.g. closing websocket threads/clients if needed)
+    logger.info("Shutting down FastAPI application lifespan context...")
+
+
+# Create FastAPI application with lifespan configurations
+app = FastAPI(
+    title="Market Dashboard Backend",
+    version="1.0.0",
+    description="Real-time market dashboard streaming Zerodha Kite ticks via WebSockets.",
+    lifespan=lifespan,
+)
+
+# Register the WebSocket route handler
+app.include_router(ws_router)
+
+
+@app.get("/")
+def get_root_status() -> Dict[str, str]:
+    """
+    Root status endpoint.
+    
+    Returns basic application descriptive metadata.
+    """
+    return {
+        "status": "online",
+        "service": "Market Dashboard API",
+        "version": "1.0.0",
+    }
+
+
+@app.get("/health")
+def health_check() -> Dict[str, str]:
+    """
+    Health check endpoint.
+    
+    Used by load balancers, container orchestrators (e.g. Kubernetes), 
+    or monitoring scripts to ensure the server process is responsive.
+    """
+    return {
+        "status": "healthy"
+    }

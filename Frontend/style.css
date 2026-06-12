@@ -1,0 +1,493 @@
+/* =====================================================
+   ROOT: CSS VARIABLES & DESIGN TOKENS
+   ===================================================== */
+:root {
+    /* Background Layers */
+    --bg-primary:      #0d0f14;
+    --bg-secondary:    #131720;
+    --bg-card:         #1a1f2e;
+    --bg-card-hover:   #1f2638;
+    --bg-table-head:   #141824;
+    --bg-row-alt:      #151a27;
+    --bg-row-hover:    #1e2436;
+
+    /* Border */
+    --border-default:  #252c3f;
+    --border-subtle:   #1e2538;
+
+    /* Text */
+    --text-primary:    #e8eaf0;
+    --text-secondary:  #8b93a8;
+    --text-muted:      #545d72;
+    --text-heading:    #ffffff;
+
+    /* Price Colors */
+    --color-positive: #00c48c;
+    --color-negative: #ff5252;
+    --color-neutral:  #8b93a8;
+
+    /* Accent */
+    --accent-blue:    #3d7eff;
+    --accent-glow:    rgba(61, 126, 255, 0.12);
+
+    /* Status */
+    --status-connected:    #00c48c;
+    --status-disconnected: #ff5252;
+
+    /* Shadows */
+    --shadow-card:    0 2px 12px rgba(0, 0, 0, 0.4);
+    --shadow-card-hover: 0 6px 24px rgba(0, 0, 0, 0.55);
+    --shadow-header:  0 1px 0 var(--border-default);
+
+    /* Spacing */
+    --space-xs:   4px;
+    --space-sm:   8px;
+    --space-md:   16px;
+    --space-lg:   24px;
+    --space-xl:   32px;
+    --space-2xl:  48px;
+
+    /* Borders */
+    --radius-sm:  6px;
+    --radius-md:  10px;
+    --radius-lg:  14px;
+
+    /* Typography */
+    --font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-size-xs:   11px;
+    --font-size-sm:   13px;
+    --font-size-md:   14px;
+    --font-size-lg:   16px;
+    --font-size-xl:   20px;
+    --font-size-2xl:  28px;
+
+    /* Transitions */
+    --transition-fast: 150ms ease;
+    --transition-base: 220ms ease;
+}
+
+/* =====================================================
+   RESET & BASE
+   ===================================================== */
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html {
+    font-size: 16px;
+    scroll-behavior: smooth;
+}
+
+body {
+    font-family: var(--font-family);
+    font-size: var(--font-size-md);
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    line-height: 1.6;
+    min-height: 100vh;
+    overflow-y: scroll;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* =====================================================
+   UTILITY CLASSES
+   ===================================================== */
+.text-right  { text-align: right; }
+.font-medium { font-weight: 500; }
+
+/* Price state classes applied by JavaScript */
+.positive {
+    color: var(--color-positive);
+}
+
+.negative {
+    color: var(--color-negative);
+}
+
+.neutral {
+    color: var(--color-neutral);
+}
+
+/* =====================================================
+   HEADER
+   ===================================================== */
+.app-header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background-color: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-default);
+    box-shadow: var(--shadow-header);
+}
+
+.header-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: var(--space-md) var(--space-xl);
+    height: 60px;
+}
+
+.app-header h1 {
+    font-size: var(--font-size-lg);
+    font-weight: 700;
+    color: var(--text-heading);
+    letter-spacing: -0.3px;
+}
+
+/* =====================================================
+   CONNECTION STATUS INDICATOR
+   ===================================================== */
+.status-indicator-container {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.status-text {
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    color: var(--text-secondary);
+    letter-spacing: 0.2px;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    transition: background-color var(--transition-base),
+                box-shadow var(--transition-base);
+}
+
+.status-dot.connected {
+    background-color: var(--status-connected);
+    box-shadow: 0 0 0 3px rgba(0, 196, 140, 0.2);
+    animation: pulse-green 2.5s infinite;
+}
+
+.status-dot.disconnected {
+    background-color: var(--status-disconnected);
+    box-shadow: 0 0 0 3px rgba(255, 82, 82, 0.2);
+}
+
+@keyframes pulse-green {
+    0%, 100% { box-shadow: 0 0 0 3px rgba(0, 196, 140, 0.2); }
+    50%       { box-shadow: 0 0 0 5px rgba(0, 196, 140, 0.08); }
+}
+
+/* =====================================================
+   DASHBOARD CONTAINER
+   ===================================================== */
+.dashboard-container {
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: var(--space-lg) var(--space-xl) var(--space-2xl);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xl);
+}
+
+/* =====================================================
+   SECTION HEADINGS
+   ===================================================== */
+.indices-section h2,
+.stocks-section h2 {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.9px;
+    margin-bottom: var(--space-md);
+}
+
+/* =====================================================
+   INDICES SECTION: CARDS GRID
+   ===================================================== */
+.indices-section {
+    width: 100%;
+}
+
+.indices-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: var(--space-md);
+}
+
+/* =====================================================
+   INDEX CARD
+   ===================================================== */
+.index-card {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    padding: var(--space-lg);
+    box-shadow: var(--shadow-card);
+    cursor: default;
+    transition: background-color var(--transition-base),
+                border-color var(--transition-base),
+                box-shadow var(--transition-base),
+                transform var(--transition-base);
+    position: relative;
+    overflow: hidden;
+}
+
+.index-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent-blue), transparent);
+    opacity: 0;
+    transition: opacity var(--transition-base);
+}
+
+.index-card:hover {
+    background-color: var(--bg-card-hover);
+    border-color: var(--border-default);
+    box-shadow: var(--shadow-card-hover);
+    transform: translateY(-2px);
+}
+
+.index-card:hover::before {
+    opacity: 1;
+}
+
+.index-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-md);
+}
+
+.index-symbol {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--text-secondary);
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+}
+
+.index-badge {
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    color: var(--accent-blue);
+    background-color: var(--accent-glow);
+    border: 1px solid rgba(61, 126, 255, 0.2);
+    border-radius: var(--radius-sm);
+    padding: 2px 7px;
+    letter-spacing: 0.5px;
+}
+
+.index-values {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+}
+
+.index-ltp {
+    font-size: var(--font-size-2xl);
+    font-weight: 700;
+    color: var(--text-heading);
+    letter-spacing: -0.8px;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+    transition: color var(--transition-fast);
+}
+
+.index-change {
+    font-size: var(--font-size-md);
+    font-weight: 500;
+    color: var(--color-neutral);
+    font-variant-numeric: tabular-nums;
+    transition: color var(--transition-fast);
+}
+
+/* =====================================================
+   STOCKS SECTION: TABLE
+   ===================================================== */
+.stocks-section {
+    width: 100%;
+}
+
+.table-responsive {
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: auto;
+    max-height: calc(100vh - 280px);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-subtle);
+    box-shadow: var(--shadow-card);
+    /* Custom scrollbar for webkit */
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-default) transparent;
+}
+
+.table-responsive::-webkit-scrollbar {
+    height: 6px;
+    width: 6px;
+}
+
+.table-responsive::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.table-responsive::-webkit-scrollbar-thumb {
+    background-color: var(--border-default);
+    border-radius: 3px;
+}
+
+.stocks-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: auto;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Sticky Header */
+.stocks-table th {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background-color: var(--bg-table-head);
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    padding: var(--space-md) var(--space-lg);
+    border-bottom: 1px solid var(--border-default);
+    white-space: nowrap;
+    user-select: none;
+}
+
+.stocks-table th:first-child {
+    text-align: left;
+}
+
+/* Table Body Rows */
+.stocks-table tbody tr {
+    border-bottom: 1px solid var(--border-subtle);
+    transition: background-color var(--transition-fast);
+}
+
+/* Zebra Striping */
+.stocks-table tbody tr:nth-child(even) {
+    background-color: var(--bg-row-alt);
+}
+
+.stocks-table tbody tr:last-child {
+    border-bottom: none;
+}
+
+.stocks-table tbody tr:hover {
+    background-color: var(--bg-row-hover);
+}
+
+.stocks-table td {
+    font-size: var(--font-size-md);
+    color: var(--text-primary);
+    padding: var(--space-md) var(--space-lg);
+    white-space: nowrap;
+    transition: color var(--transition-fast);
+}
+
+.stock-symbol {
+    font-weight: 600;
+    color: var(--text-heading);
+    letter-spacing: 0.2px;
+    font-size: var(--font-size-md);
+}
+
+.stock-change {
+    font-weight: 500;
+}
+
+.stock-volume {
+    color: var(--text-secondary);
+    font-size: var(--font-size-sm);
+}
+
+.stock-high { color: var(--color-positive); }
+.stock-low  { color: var(--color-negative); }
+
+/* =====================================================
+   FLASH ANIMATION (triggered by JS class toggling)
+   ===================================================== */
+@keyframes flash-positive {
+    0%   { background-color: rgba(0, 196, 140, 0.18); }
+    100% { background-color: transparent; }
+}
+
+@keyframes flash-negative {
+    0%   { background-color: rgba(255, 82, 82, 0.18); }
+    100% { background-color: transparent; }
+}
+
+.flash-up   { animation: flash-positive 600ms ease-out forwards; }
+.flash-down { animation: flash-negative 600ms ease-out forwards; }
+
+/* =====================================================
+   FOOTER
+   ===================================================== */
+.app-footer {
+    border-top: 1px solid var(--border-subtle);
+    background-color: var(--bg-secondary);
+}
+
+.footer-container {
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: var(--space-md) var(--space-xl);
+    text-align: center;
+}
+
+.app-footer p {
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
+    letter-spacing: 0.3px;
+}
+
+/* =====================================================
+   RESPONSIVE: TABLET
+   ===================================================== */
+@media (max-width: 1024px) {
+    .header-container,
+    .dashboard-container,
+    .footer-container {
+        padding-left: var(--space-lg);
+        padding-right: var(--space-lg);
+    }
+}
+
+/* =====================================================
+   RESPONSIVE: SMALL TABLET / LARGE MOBILE
+   ===================================================== */
+@media (max-width: 768px) {
+    .header-container,
+    .dashboard-container,
+    .footer-container {
+        padding-left: var(--space-md);
+        padding-right: var(--space-md);
+    }
+
+    .app-header h1 {
+        font-size: var(--font-size-md);
+    }
+
+    .index-ltp {
+        font-size: var(--font-size-xl);
+    }
+
+    .stocks-table th,
+    .stocks-table td {
+        padding: var(--space-sm) var(--space-md);
+    }
+}
