@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any, Dict, List
 from sqlalchemy.sql import text
 from Backend.database.db import SessionLocal
 from Backend.utils.logger import get_logger
@@ -56,6 +56,66 @@ def insert_candle(candle: Dict[str, Any]) -> bool:
             f"at time {candle.get('candle_start')}: {e}"
         )
         return False
+    finally:
+        session.close()
+
+
+def get_candles(symbol: str, limit: int = 100) -> List[Dict[str, Any]]:
+    """
+    Queries the candles_1m table for the latest candles of a given symbol,
+    ordered chronologically (oldest to newest).
+
+    Args:
+        symbol (str): Symbol to query (e.g. 'RELIANCE').
+        limit (int): Maximum number of records to retrieve.
+
+    Returns:
+        List[Dict[str, Any]]: A list of dictionaries representing candle rows.
+    """
+    sql = text("""
+        SELECT
+            symbol,
+            candle_start,
+            open,
+            high,
+            low,
+            close,
+            volume,
+            trades
+        FROM candles_1m
+        WHERE symbol = :symbol
+        ORDER BY candle_start DESC
+        LIMIT :limit;
+    """)
+
+    session = SessionLocal()
+    try:
+        result = session.execute(sql, {"symbol": symbol, "limit": limit})
+        candles = []
+        for row in result:
+            candle_start = row[1]
+            if hasattr(candle_start, "isoformat"):
+                candle_start_str = candle_start.isoformat()
+            else:
+                candle_start_str = str(candle_start)
+
+            candles.append({
+                "symbol": row[0],
+                "candle_start": candle_start_str,
+                "open": float(row[2]) if row[2] is not None else 0.0,
+                "high": float(row[3]) if row[3] is not None else 0.0,
+                "low": float(row[4]) if row[4] is not None else 0.0,
+                "close": float(row[5]) if row[5] is not None else 0.0,
+                "volume": int(row[6]) if row[6] is not None else 0,
+                "trades": int(row[7]) if row[7] is not None else 0,
+            })
+        
+        # Reverse to oldest -> newest chronological order
+        candles.reverse()
+        return candles
+    except Exception as e:
+        logger.exception(f"Database exception retrieving candles for {symbol}: {e}")
+        return []
     finally:
         session.close()
 

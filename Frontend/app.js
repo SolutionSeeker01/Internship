@@ -481,10 +481,142 @@ function scheduleReconnect() {
 }
 
 /* -------------------------------------------------------------
+   HISTORICAL CHARTING (TRADINGVIEW LIGHTWEIGHT CHARTS)
+   ------------------------------------------------------------- */
+/** @type {any} */
+let chart;
+/** @type {any} */
+let candleSeries;
+let selectedSymbol = "RELIANCE";
+
+function initializeChart() {
+    const container = getEl("chart-container");
+    if (!container) return;
+
+    const width = container.clientWidth || 800;
+
+    // Create the chart instance with professional light theme colors matching the UI
+    chart = LightweightCharts.createChart(container, {
+        width: width,
+        height: 500,
+        layout: {
+            background: { type: 'solid', color: '#ffffff' },
+            backgroundColor: "#ffffff",
+            textColor: "#111827",
+            fontFamily: "Inter, sans-serif",
+        },
+        grid: {
+            vertLines: { color: "#f3f4f6" },
+            horzLines: { color: "#f3f4f6" },
+        },
+        crosshair: {
+            mode: LightweightCharts.CrosshairMode.Normal,
+        },
+        rightPriceScale: {
+            borderColor: "#e5e7eb",
+        },
+        timeScale: {
+            borderColor: "#e5e7eb",
+            timeVisible: true,
+            secondsVisible: false,
+        },
+    });
+
+    // Add candlestick series configured with the theme green/red colors
+    candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
+        upColor: "#16a34a",
+        downColor: "#dc2626",
+        borderDownColor: "#dc2626",
+        borderUpColor: "#16a34a",
+        wickDownColor: "#dc2626",
+        wickUpColor: "#16a34a",
+    });
+
+    // Handle container resize automatically
+    window.addEventListener("resize", () => {
+        chart.resize(container.clientWidth || 800, 500);
+    });
+}
+
+async function loadCandles(symbol) {
+    selectedSymbol = symbol;
+    
+    // Update chart title
+    const titleEl = getEl("chart-title");
+    if (titleEl) {
+        titleEl.textContent = `${symbol} - 1 Minute Candles`;
+    }
+
+    // Update row highlighting
+    document.querySelectorAll(".stock-row").forEach(row => {
+        if (row.getAttribute("data-symbol") === symbol) {
+            row.classList.add("selected-row");
+        } else {
+            row.classList.remove("selected-row");
+        }
+    });
+
+    try {
+        const response = await fetch(`http://127.0.0.1:8000/candles/${symbol}?limit=100`);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        // Map, sort, and deduplicate data to prevent Lightweight Charts sorting crashes
+        const seenTimes = new Set();
+        const mappedData = data.map(candle => ({
+            time: Math.floor(new Date(candle.candle_start).getTime() / 1000),
+            open: Number(candle.open),
+            high: Number(candle.high),
+            low: Number(candle.low),
+            close: Number(candle.close)
+        })).filter(c => !isNaN(c.time));
+
+        // Sort ascending chronologically
+        mappedData.sort((a, b) => a.time - b.time);
+
+        // Deduplicate matching times
+        const cleanData = [];
+        for (const item of mappedData) {
+            if (!seenTimes.has(item.time)) {
+                seenTimes.add(item.time);
+                cleanData.push(item);
+            }
+        }
+
+        if (candleSeries) {
+            candleSeries.setData(cleanData);
+            chart.timeScale().fitContent();
+        }
+    } catch (err) {
+        console.error(`[Dashboard] Failed to load candles for ${symbol}:`, err);
+    }
+}
+
+function setupStockSelection() {
+    // Bind click listener to each watchlist stock row
+    document.querySelectorAll(".stock-row").forEach(row => {
+        row.addEventListener("click", () => {
+            const symbol = row.getAttribute("data-symbol");
+            if (symbol) {
+                loadCandles(symbol);
+            }
+        });
+    });
+}
+
+/* -------------------------------------------------------------
    ENTRY POINT
    ------------------------------------------------------------- */
 document.addEventListener('DOMContentLoaded', () => {
     connectWebSocket();
     updateHeaderClock();
     setInterval(updateHeaderClock, 1000);
+    
+    // Initialize chart and load default symbol candles
+    initializeChart();
+    loadCandles(selectedSymbol);
+    setupStockSelection();
 });

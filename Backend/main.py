@@ -9,6 +9,7 @@ logger = get_logger(__name__)
 
 # Local imports
 from Backend.routers.websocket import router as ws_router
+from Backend.routers.candles import router as candle_router
 from Backend.market_data.kite_client import start_market_data_service
 
 
@@ -40,6 +41,8 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down FastAPI application lifespan context...")
 
 
+from fastapi.middleware.cors import CORSMiddleware
+
 # Create FastAPI application with lifespan configurations
 app = FastAPI(
     title="Market Dashboard Backend",
@@ -48,8 +51,18 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Enable CORS for frontend integration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Register the WebSocket route handler
 app.include_router(ws_router)
+app.include_router(candle_router)
 
 
 @app.get("/")
