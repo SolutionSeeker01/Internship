@@ -341,8 +341,8 @@ function updateStockRow(symbol, data) {
         }
     }
 
-    if (bidEl)   bidEl.textContent   = formatPrice(data.bid);
-    if (askEl)   askEl.textContent   = formatPrice(data.ask);
+    if (bidEl)   bidEl.textContent   = data.bid != null && !isNaN(data.bid) ? formatPrice(data.bid) : "0";
+    if (askEl)   askEl.textContent   = data.ask != null && !isNaN(data.ask) ? formatPrice(data.ask) : "0";
     if (volEl)   volEl.textContent   = formatVolume(data.volume);
     if (openEl)  openEl.textContent  = formatPrice(data.open);
     if (closeEl) closeEl.textContent = formatPrice(data.close);
