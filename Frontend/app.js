@@ -522,8 +522,11 @@ function parseISOToLocalSeconds(isoString) {
     const hour   = parseInt(parts[3], 10);
     const minute = parseInt(parts[4], 10);
     const second = parseInt(parts[5] || '0', 10);
-    // new Date(y, m, d, h, min, sec) always uses LOCAL time — correct for IST
-    return new Date(year, month, day, hour, minute, second).getTime() / 1000;
+    
+    // Treat parsed numbers as UTC time
+    const utcTimeMs = Date.UTC(year, month, day, hour, minute, second);
+    // Since the database time is in IST (UTC+5:30), the true UTC timestamp is 5.5 hours earlier
+    return (utcTimeMs / 1000) - (5.5 * 3600);
 }
 
 function initializeChart() {
@@ -532,8 +535,9 @@ function initializeChart() {
 
     const width = container.clientWidth || 800;
 
-    // Create the chart instance — no custom UTC formatters.
-    // TradingView will display timestamps using the browser's local timezone (IST) automatically.
+    // Create the chart instance.
+    // We explicitly format timescale tick marks and crosshair/tooltips in Asia/Kolkata (IST) timezone
+    // so that the chart remains correct regardless of client browser locale.
     chart = LightweightCharts.createChart(container, {
         width: width,
         height: 500,
@@ -553,11 +557,30 @@ function initializeChart() {
         rightPriceScale: {
             borderColor: "#e5e7eb",
         },
+        localization: {
+            timeFormatter: (timestamp) => {
+                const date = new Date(timestamp * 1000);
+                return date.toLocaleTimeString('en-US', {
+                    timeZone: 'Asia/Kolkata',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false
+                });
+            }
+        },
         timeScale: {
             borderColor: "#e5e7eb",
             timeVisible: true,
             secondsVisible: false,
-            // No tickMarkFormatter — let TradingView use local browser time naturally
+            tickMarkFormatter: (time, tickMarkType, locale) => {
+                const date = new Date(time * 1000);
+                return date.toLocaleTimeString('en-US', {
+                    timeZone: 'Asia/Kolkata',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false
+                });
+            }
         },
     });
 
