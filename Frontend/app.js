@@ -390,6 +390,11 @@ function handleUpdate(data) {
         updateStockRow(symbol, data);
         updateLeaderHighlight();
         updateMarketStats();
+
+        // Feed live updates to the historical candlestick chart
+        if (symbol.toUpperCase() === selectedSymbol.toUpperCase()) {
+            updateLiveCandle(data);
+        }
     }
 }
 
@@ -488,6 +493,38 @@ let chart;
 /** @type {any} */
 let candleSeries;
 let selectedSymbol = "RELIANCE";
+let currentCandles = [];
+let lastCumulativeVolume = null;
+
+/**
+ * Parses an ISO date/time string (e.g. 2026-06-15T11:17:00 or 2026-06-15 11:17:22.541231)
+ * as LOCAL time (browser timezone = IST) by always using the local Date constructor.
+ *
+ * CRITICAL: Do NOT use new Date(isoString) directly.
+ * V8/Chrome parses bare ISO strings like "2026-06-15T11:17:00" (no timezone offset)
+ * as UTC, which would show 05:47 IST instead of 11:17 IST.
+ * We always extract date/time parts and pass them to new Date(y,m,d,h,min,sec)
+ * which always interprets values as local time.
+ *
+ * @param {string} isoString  - e.g. "2026-06-15T11:17:22.541231" or "2026-06-15 11:17:00"
+ * @returns {number} Unix epoch seconds relative to local browser timezone (IST)
+ */
+function parseISOToLocalSeconds(isoString) {
+    if (!isoString) return NaN;
+    // Normalize space separator to 'T'
+    const s = String(isoString).replace(' ', 'T');
+    // Split on any non-digit: handles both "T" separator and fractional seconds
+    const parts = s.split(/\D/);
+    if (parts.length < 5) return NaN;
+    const year   = parseInt(parts[0], 10);
+    const month  = parseInt(parts[1], 10) - 1; // 0-indexed
+    const day    = parseInt(parts[2], 10);
+    const hour   = parseInt(parts[3], 10);
+    const minute = parseInt(parts[4], 10);
+    const second = parseInt(parts[5] || '0', 10);
+    // new Date(y, m, d, h, min, sec) always uses LOCAL time — correct for IST
+    return new Date(year, month, day, hour, minute, second).getTime() / 1000;
+}
 
 function initializeChart() {
     const container = getEl("chart-container");
@@ -495,7 +532,8 @@ function initializeChart() {
 
     const width = container.clientWidth || 800;
 
-    // Create the chart instance with professional light theme colors matching the UI
+    // Create the chart instance — no custom UTC formatters.
+    // TradingView will display timestamps using the browser's local timezone (IST) automatically.
     chart = LightweightCharts.createChart(container, {
         width: width,
         height: 500,
@@ -519,6 +557,7 @@ function initializeChart() {
             borderColor: "#e5e7eb",
             timeVisible: true,
             secondsVisible: false,
+            // No tickMarkFormatter — let TradingView use local browser time naturally
         },
     });
 
@@ -540,6 +579,7 @@ function initializeChart() {
 
 async function loadCandles(symbol) {
     selectedSymbol = symbol;
+    lastCumulativeVolume = null; // Reset volume accumulator for the new symbol
     
     // Update chart title
     const titleEl = getEl("chart-title");
@@ -567,11 +607,12 @@ async function loadCandles(symbol) {
         // Map, sort, and deduplicate data to prevent Lightweight Charts sorting crashes
         const seenTimes = new Set();
         const mappedData = data.map(candle => ({
-            time: Math.floor(new Date(candle.candle_start).getTime() / 1000),
+            time: parseISOToLocalSeconds(candle.candle_start),
             open: Number(candle.open),
             high: Number(candle.high),
             low: Number(candle.low),
-            close: Number(candle.close)
+            close: Number(candle.close),
+            volume: Number(candle.volume || 0)
         })).filter(c => !isNaN(c.time));
 
         // Sort ascending chronologically
@@ -587,11 +628,83 @@ async function loadCandles(symbol) {
         }
 
         if (candleSeries) {
-            candleSeries.setData(cleanData);
+            currentCandles = cleanData;
+            candleSeries.setData(currentCandles);
             chart.timeScale().fitContent();
         }
     } catch (err) {
         console.error(`[Dashboard] Failed to load candles for ${symbol}:`, err);
+    }
+}
+
+function updateLiveCandle(data) {
+    // Temporary diagnostic logging
+    console.log(
+        "LIVE TICK:",
+        data.symbol,
+        data.timestamp,
+        data.ltp
+    );
+    console.log(
+        "SELECTED:",
+        selectedSymbol
+    );
+
+    if (!candleSeries) return;
+
+    const tickSeconds = parseISOToLocalSeconds(data.timestamp);
+    if (isNaN(tickSeconds)) return;
+
+    // Truncate to the start of the current minute (in local seconds)
+    const minuteStartSeconds = Math.floor(tickSeconds / 60) * 60;
+
+    const tickVolume = Number(data.volume) || 0;
+    let volumeDiff = 0;
+    if (lastCumulativeVolume !== null) {
+        volumeDiff = Math.max(0, tickVolume - lastCumulativeVolume);
+    }
+    lastCumulativeVolume = tickVolume;
+
+    if (currentCandles.length === 0) {
+        const firstCandle = {
+            time: minuteStartSeconds,
+            open: Number(data.ltp),
+            high: Number(data.ltp),
+            low: Number(data.ltp),
+            close: Number(data.ltp),
+            volume: volumeDiff
+        };
+
+        currentCandles.push(firstCandle);
+        candleSeries.setData(currentCandles);
+        chart.timeScale().scrollToRealTime();
+        return;
+    }
+
+    const lastCandle = currentCandles[currentCandles.length - 1];
+
+    if (minuteStartSeconds === lastCandle.time) {
+        // Update the active 1-minute candle
+        lastCandle.close = Number(data.ltp);
+        if (Number(data.ltp) > lastCandle.high) lastCandle.high = Number(data.ltp);
+        if (Number(data.ltp) < lastCandle.low) lastCandle.low = Number(data.ltp);
+        lastCandle.volume = (lastCandle.volume || 0) + volumeDiff;
+
+        candleSeries.update(lastCandle);
+        chart.timeScale().scrollToRealTime();
+    } else if (minuteStartSeconds > lastCandle.time) {
+        // Roll over and create a new active 1-minute candle
+        const newCandle = {
+            time: minuteStartSeconds,
+            open: Number(data.ltp),
+            high: Number(data.ltp),
+            low: Number(data.ltp),
+            close: Number(data.ltp),
+            volume: volumeDiff
+        };
+        currentCandles.push(newCandle);
+        candleSeries.update(newCandle);
+        chart.timeScale().scrollToRealTime();
     }
 }
 
