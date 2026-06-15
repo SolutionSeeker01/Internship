@@ -1,7 +1,7 @@
 import threading
 from copy import deepcopy
 from typing import Any, Dict, Optional
-from Backend.utils.logger import get_logger
+from utils.logger import get_logger
 
 # Set up logging for this module
 logger = get_logger(__name__)

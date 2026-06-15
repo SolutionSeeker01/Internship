@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
-from Backend.database.repository import get_candles
-from Backend.utils.logger import get_logger
+from database.repository import get_candles
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 

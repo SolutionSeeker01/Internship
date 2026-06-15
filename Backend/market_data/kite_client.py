@@ -4,13 +4,13 @@ from typing import Any, Dict, List, Optional
 from kiteconnect import KiteTicker
 
 # Import from local modules
-from Backend.market_data.connection import create_kws
-from Backend.market_data.subscriptions import get_symbol, get_tokens
-from Backend.market_data.store import update_market_data
-from Backend.routers.websocket import broadcast_market_update
-from Backend.utils.logger import get_logger
-from Backend.database.candle_builder import process_tick
-from Backend.database.repository import insert_candle
+from market_data.connection import create_kws
+from market_data.subscriptions import get_symbol, get_tokens
+from market_data.store import update_market_data
+from routers.websocket import broadcast_market_update
+from utils.logger import get_logger
+from database.candle_builder import process_tick
+from database.repository import insert_candle
 
 # Set up logging
 logger = get_logger(__name__)
@@ -29,7 +29,7 @@ async def _log_periodic_summary() -> None:
     Reads connection info from the WebSocket router manager.
     """
     global _tick_count
-    from Backend.routers.websocket import manager
+    from routers.websocket import manager
     while True:
         try:
             await asyncio.sleep(60)

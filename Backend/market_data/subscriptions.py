@@ -1,111 +1,93 @@
 from typing import Any, Dict, List, Optional
-from Backend.utils.logger import get_logger
+import threading
+from sqlalchemy.sql import text
+from database.db import SessionLocal
+from utils.logger import get_logger
 
 # Set up logging for this module
 logger = get_logger(__name__)
 
-# Static list of instruments defined for V1
-# Keys are the standard unified symbols used in the application.
-# Value contains the Zerodha Kite metadata (token, exchange, symbol, segment).
-# Hand-picked correct instrument tokens from Zerodha's instrument master list.
-_INSTRUMENTS_METADATA: Dict[str, Dict[str, Any]] = {
-    "NIFTY50": {
-        "symbol": "NIFTY 50",
-        "token": 256265,
-        "exchange": "NSE",
-        "name": "Nifty 50 Index",
-        "segment": "INDICES",
-    },
-    "BANKNIFTY": {
-        "symbol": "NIFTY BANK",
-        "token": 260105,
-        "exchange": "NSE",
-        "name": "Nifty Bank Index",
-        "segment": "INDICES",
-    },
-    "SENSEX": {
-        "symbol": "SENSEX",
-        "token": 265,
-        "exchange": "BSE",
-        "name": "BSE Sensex Index",
-        "segment": "INDICES",
-    },
-    "RELIANCE": {
-        "symbol": "RELIANCE",
-        "token": 738561,
-        "exchange": "NSE",
-        "name": "RELIANCE INDUSTRIES LTD",
-        "segment": "NSE-EQ",
-    },
-    "HDFCBANK": {
-        "symbol": "HDFCBANK",
-        "token": 341249,
-        "exchange": "NSE",
-        "name": "HDFC BANK LTD",
-        "segment": "NSE-EQ",
-    },
-    "ICICIBANK": {
-        "symbol": "ICICIBANK",
-        "token": 1270529,
-        "exchange": "NSE",
-        "name": "ICICI BANK LTD",
-        "segment": "NSE-EQ",
-    },
-    "BHARTIARTL": {
-        "symbol": "BHARTIARTL",
-        "token": 2714625,
-        "exchange": "NSE",
-        "name": "BHARTI AIRTEL LTD",
-        "segment": "NSE-EQ",
-    },
-    "INFY": {
-        "symbol": "INFY",
-        "token": 408065,
-        "exchange": "NSE",
-        "name": "INFOSYS LTD",
-        "segment": "NSE-EQ",
-    },
-    "TCS": {
-        "symbol": "TCS",
-        "token": 2953217,
-        "exchange": "NSE",
-        "name": "TATA CONSULTANCY SERVICES LTD",
-        "segment": "NSE-EQ",
-    },
-    "HINDUNILVR": {
-        "symbol": "HINDUNILVR",
-        "token": 356865,
-        "exchange": "NSE",
-        "name": "HINDUSTAN UNILEVER LTD",
-        "segment": "NSE-EQ",
-    },
-    "BAJFINANCE": {
-        "symbol": "BAJFINANCE",
-        "token": 81153,
-        "exchange": "NSE",
-        "name": "BAJAJ FINANCE LTD",
-        "segment": "NSE-EQ",
-    },
-}
+# Thread-safety lock for cache access and reload operations
+_lock = threading.Lock()
 
-# Pre-populate token-to-symbol lookup table for efficient O(1) reverse search.
-# Example: 738561 -> "RELIANCE"
-# Using the key as the application-level symbol name (e.g., RELIANCE).
-_TOKEN_TO_SYMBOL: Dict[int, str] = {
-    info["token"]: key for key, info in _INSTRUMENTS_METADATA.items()
-}
+# In-memory caches for O(1) runtime lookups
+_TOKEN_TO_SYMBOL: Dict[int, str] = {}
+_SYMBOL_TO_METADATA: Dict[str, Dict[str, Any]] = {}
+
+
+def reload_instruments() -> None:
+    """
+    Reloads all active instruments from the PostgreSQL database into the RAM cache.
+    Rebuilds lookup tables atomically and thread-safely.
+
+    Raises:
+        RuntimeError: If no active instruments are found in the database.
+    """
+    logger.info("Reloading active instruments from database...")
+    session = SessionLocal()
+    try:
+        sql = text("""
+            SELECT id, symbol, token, exchange, name, segment, broker, active
+            FROM instruments
+            WHERE active = TRUE;
+        """)
+        result = session.execute(sql)
+        rows = result.fetchall()
+
+        if not rows:
+            raise RuntimeError("No active instruments found in database.")
+
+        new_token_to_symbol: Dict[int, str] = {}
+        new_symbol_to_metadata: Dict[str, Dict[str, Any]] = {}
+
+        for row in rows:
+            mapping = row._mapping
+            symbol = mapping["symbol"]
+            token = int(mapping["token"])
+
+            new_token_to_symbol[token] = symbol
+            new_symbol_to_metadata[symbol] = {
+                "id": symbol,  # For backward compatibility as the frontend expects key symbol as id
+                "symbol": symbol,
+                "token": token,
+                "exchange": mapping["exchange"],
+                "name": mapping["name"],
+                "segment": mapping["segment"],
+                "broker": mapping["broker"],
+                "active": bool(mapping["active"]),
+            }
+
+        # Update cache under lock to ensure thread safety for active readers (e.g. KiteTicker thread)
+        with _lock:
+            global _TOKEN_TO_SYMBOL, _SYMBOL_TO_METADATA
+            _TOKEN_TO_SYMBOL = new_token_to_symbol
+            _SYMBOL_TO_METADATA = new_symbol_to_metadata
+
+        logger.info(f"Successfully loaded {len(new_symbol_to_metadata)} active instruments into cache.")
+    except Exception as e:
+        logger.error(f"Error loading instruments from database: {e}")
+        raise
+    finally:
+        session.close()
+
+
+def load_instruments() -> None:
+    """
+    Loads active instruments into RAM. Typically called once at startup.
+    """
+    reload_instruments()
 
 
 def get_tokens() -> List[int]:
     """
     Returns a list of integer instrument tokens for all subscribed instruments.
-    
     This list is passed directly to Zerodha KiteTicker for subscription updates.
-    
+
     Returns:
         List[int]: List of Kite instrument tokens.
     """
-    tokens = list(_TOKEN_TO_SYMBOL.keys())
+    with _lock:
+        tokens = list(_TOKEN_TO_SYMBOL.keys())
     logger.debug(f"Retrieved {len(tokens)} instrument tokens for subscription.")
     return tokens
 
@@ -113,17 +95,17 @@ def get_tokens() -> List[int]:
 def get_symbol(token: int) -> Optional[str]:
     """
     Looks up and returns the corresponding trading symbol/key for a given instrument token.
-    
     This reverse lookup is essential during real-time tick processing to map numerical
     tokens from incoming Kite ticker updates back to application symbols.
-    
+
     Args:
         token (int): The numerical Zerodha instrument token.
-        
+
     Returns:
         Optional[str]: The key/symbol (e.g., 'RELIANCE') if found, otherwise None.
     """
-    symbol = _TOKEN_TO_SYMBOL.get(token)
+    with _lock:
+        symbol = _TOKEN_TO_SYMBOL.get(token)
     if not symbol:
         logger.warning(f"Lookup failed: Instrument token {token} not found in active subscriptions.")
     return symbol
@@ -131,23 +113,12 @@ def get_symbol(token: int) -> Optional[str]:
 
 def get_all_instruments() -> List[Dict[str, Any]]:
     """
-    Returns full metadata for all configured instruments.
-    
-    This function is helpful for the frontend or initial client sync, providing the
-    entire list of configured instruments including exchange, description, and token information.
-    
+    Returns full metadata for all configured instruments from RAM.
+
     Returns:
         List[Dict[str, Any]]: List of dictionaries containing instrument details.
     """
     logger.debug("Retrieving metadata for all subscribed instruments.")
-    return [
-        {
-            "id": key,
-            "symbol": info["symbol"],
-            "token": info["token"],
-            "exchange": info["exchange"],
-            "name": info["name"],
-            "segment": info["segment"],
-        }
-        for key, info in _INSTRUMENTS_METADATA.items()
-    ]
+    with _lock:
+        # Return a list of dict copies to prevent modification of external references
+        return [dict(info) for info in _SYMBOL_TO_METADATA.values()]

@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional
 import threading
 
 # Centralized logger
-from Backend.utils.logger import get_logger
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 

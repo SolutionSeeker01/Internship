@@ -2,8 +2,8 @@ from typing import Any, Dict, Set
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 # Import store module to retrieve current snapshot
-from Backend.market_data.store import get_market_data
-from Backend.utils.logger import get_logger
+from market_data.store import get_market_data
+from utils.logger import get_logger
 
 # Set up logging
 logger = get_logger(__name__)

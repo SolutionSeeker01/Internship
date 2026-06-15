@@ -1,6 +1,6 @@
 import os
 from kiteconnect import KiteTicker
-from Backend.utils.logger import get_logger
+from utils.logger import get_logger
 
 # Set up logger for this module
 logger = get_logger(__name__)

@@ -3,14 +3,14 @@ from typing import Dict
 from fastapi import FastAPI
 
 # Initialize centralized logging before importing local modules that define their own loggers
-from Backend.utils.logger import get_logger, setup_logging
+from utils.logger import get_logger, setup_logging
 setup_logging()
 logger = get_logger(__name__)
 
 # Local imports
-from Backend.routers.websocket import router as ws_router
-from Backend.routers.candles import router as candle_router
-from Backend.market_data.kite_client import start_market_data_service
+from routers.websocket import router as ws_router
+from routers.candles import router as candle_router
+from market_data.kite_client import start_market_data_service
 
 
 @asynccontextmanager
@@ -23,6 +23,15 @@ async def lifespan(app: FastAPI):
     """
     logger.info("Starting up FastAPI application lifespan context...")
     
+    # Load active instruments from PostgreSQL into RAM cache
+    try:
+        from market_data.subscriptions import load_instruments
+        load_instruments()
+        logger.info("Active instruments successfully loaded from database into RAM.")
+    except Exception as e:
+        logger.error(f"Failed to load active instruments at startup: {e}")
+        raise
+
     # Initialize and start the background Zerodha KiteTicker service
     try:
         import asyncio
