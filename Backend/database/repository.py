@@ -119,25 +119,3 @@ def get_candles(symbol: str, limit: int = 100) -> List[Dict[str, Any]]:
     finally:
         session.close()
 
-
-if __name__ == "__main__":
-    import uuid
-    import datetime
-
-    # Create dummy testing candle data frame
-    test_candle = {
-        "symbol": "TEST_" + str(uuid.uuid4())[:8],
-        "candle_start": datetime.datetime.now().replace(second=0, microsecond=0).isoformat(),
-        "open": 1250.50,
-        "high": 1260.00,
-        "low": 1245.25,
-        "close": 1255.80,
-        "volume": 55000,
-        "trades": 120
-    }
-
-    print(f"--- Triggering Database Write Manual Test ---")
-    print(f"Candle Payload: {test_candle}")
-    
-    success = insert_candle(test_candle)
-    print(f"Insertion success outcome: {success}")

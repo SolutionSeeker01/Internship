@@ -34,7 +34,7 @@ async def _log_periodic_summary() -> None:
         try:
             await asyncio.sleep(60)
             clients_count = len(manager.active_connections)
-            logger.info(f"Processed {_tick_count:,} ticks in last minute. Connected clients: {clients_count}")
+            logger.debug(f"Processed {_tick_count:,} ticks in last minute. Connected clients: {clients_count}")
             _tick_count = 0
         except asyncio.CancelledError:
             break

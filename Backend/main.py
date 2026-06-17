@@ -10,6 +10,7 @@ logger = get_logger(__name__)
 # Local imports
 from routers.websocket import router as ws_router
 from routers.candles import router as candle_router
+from routers.webhook import router as webhook_router
 from market_data.kite_client import start_market_data_service
 
 
@@ -23,6 +24,15 @@ async def lifespan(app: FastAPI):
     """
     logger.info("Starting up FastAPI application lifespan context...")
     
+    # Initialize database schemas
+    try:
+        from database.signal_repository import init_db
+        init_db()
+        logger.info("Signals database schema successfully initialized.")
+    except Exception as e:
+        logger.error(f"Failed to initialize database schema on startup: {e}")
+        raise
+
     # Load active instruments from PostgreSQL into RAM cache
     try:
         from market_data.subscriptions import load_instruments
@@ -72,6 +82,7 @@ app.add_middleware(
 # Register the WebSocket route handler
 app.include_router(ws_router)
 app.include_router(candle_router)
+app.include_router(webhook_router)
 
 
 @app.get("/")

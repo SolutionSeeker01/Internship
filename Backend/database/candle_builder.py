@@ -90,7 +90,7 @@ def process_tick(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                 except Exception:
                     time_str = completed_candle["candle_start"]
 
-                logger.info(f"Closed candle: {symbol} {time_str}")
+                logger.debug(f"Closed candle: {symbol} {time_str}")
                 active_candle = None
 
         if active_candle is None:
