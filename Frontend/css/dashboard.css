@@ -21,6 +21,17 @@
     margin-bottom: 12px;
 }
 
+.watchlist-notification {
+    background-color: #eff6ff;
+    border: 1px solid #bfdbfe;
+    color: #1e40af;
+    padding: 10px 14px;
+    border-radius: var(--radius-md);
+    margin-bottom: 12px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
 /* =====================================================
    INDICES CARDS LAYOUT
    ===================================================== */
@@ -241,30 +252,6 @@
     color: var(--text-secondary);
 }
 
-/* =====================================================
-   LEADER HIGHLIGHT STYLES
-   ===================================================== */
-.stocks-table tbody tr.leader-row {
-    background-color: #f0fdf4 !important; /* Extremely light green row */
-}
-
-.stocks-table tbody tr.leader-row td {
-    border-top: 1.5px solid rgba(22, 163, 74, 0.25);
-    border-bottom: 1.5px solid rgba(22, 163, 74, 0.25);
-}
-
-.leader-badge {
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    color: #15803d;
-    background-color: #dcfce7;
-    border: 1px solid rgba(21, 128, 61, 0.2);
-    border-radius: var(--radius-sm);
-    padding: 1px 5px;
-    margin-left: 8px;
-    text-transform: uppercase;
-}
 
 /* =====================================================
    TICK PRICE FLASH ANIMATIONS (SMOOTH TRANSITIONS)

@@ -23,6 +23,7 @@ def reload_instruments() -> None:
     Raises:
         RuntimeError: If no active instruments are found in the database.
     """
+    global _TOKEN_TO_SYMBOL, _SYMBOL_TO_METADATA
     logger.info("Reloading active instruments from database...")
     session = SessionLocal()
     try:
@@ -35,7 +36,11 @@ def reload_instruments() -> None:
         rows = result.fetchall()
 
         if not rows:
-            raise RuntimeError("No active instruments found in database.")
+            logger.warning("No active instruments found in database. Clearing cache.")
+            with _lock:
+                _TOKEN_TO_SYMBOL = {}
+                _SYMBOL_TO_METADATA = {}
+            return
 
         new_token_to_symbol: Dict[int, str] = {}
         new_symbol_to_metadata: Dict[str, Dict[str, Any]] = {}
@@ -59,7 +64,6 @@ def reload_instruments() -> None:
 
         # Update cache under lock to ensure thread safety for active readers (e.g. KiteTicker thread)
         with _lock:
-            global _TOKEN_TO_SYMBOL, _SYMBOL_TO_METADATA
             _TOKEN_TO_SYMBOL = new_token_to_symbol
             _SYMBOL_TO_METADATA = new_symbol_to_metadata
 

@@ -20,6 +20,10 @@
                 <!-- SVG Icon mimicking TradingView/Zerodha style -->
                 <svg class="header-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
                 <h1>Market Dashboard</h1>
+                <nav class="header-nav">
+                    <button class="nav-btn active" id="nav-btn-dashboard">Dashboard</button>
+                    <button class="nav-btn" id="nav-btn-instruments">Instrument Manager</button>
+                </nav>
             </div>
             <!-- Connection status indicator & Header info -->
             <div class="header-right">
@@ -38,70 +42,14 @@
         <section class="indices-section" id="market-section" aria-label="Indices Section">
             <h2>Market Indices</h2>
             <div class="indices-grid" id="indices-container">
-                
-                <!-- NIFTY50 Index Card -->
-                <div class="index-card" id="index-card-NIFTY50" data-symbol="NIFTY50">
-                    <div class="index-header">
-                        <span class="index-symbol">NIFTY 50</span>
-                        <span class="index-badge">NSE</span>
-                    </div>
-                    <div class="index-body-wrapper">
-                        <div class="index-values">
-                            <div class="index-ltp" id="index-ltp-NIFTY50">--</div>
-                            <div class="index-change" id="index-change-NIFTY50">--</div>
-                        </div>
-                        <div class="index-sparkline">
-                            <svg viewBox="0 0 100 30" class="sparkline-svg">
-                                <path d="M0,20 Q15,5 30,18 T60,8 T90,14 L100,5" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-linecap="round"></path>
-                            </svg>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- BANKNIFTY Index Card -->
-                <div class="index-card" id="index-card-BANKNIFTY" data-symbol="BANKNIFTY">
-                    <div class="index-header">
-                        <span class="index-symbol">NIFTY BANK</span>
-                        <span class="index-badge">NSE</span>
-                    </div>
-                    <div class="index-body-wrapper">
-                        <div class="index-values">
-                            <div class="index-ltp" id="index-ltp-BANKNIFTY">--</div>
-                            <div class="index-change" id="index-change-BANKNIFTY">--</div>
-                        </div>
-                        <div class="index-sparkline">
-                            <svg viewBox="0 0 100 30" class="sparkline-svg">
-                                <path d="M0,15 Q15,25 30,10 T60,22 T90,5 L100,12" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-linecap="round"></path>
-                            </svg>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- SENSEX Index Card -->
-                <div class="index-card" id="index-card-SENSEX" data-symbol="SENSEX">
-                    <div class="index-header">
-                        <span class="index-symbol">SENSEX</span>
-                        <span class="index-badge">BSE</span>
-                    </div>
-                    <div class="index-body-wrapper">
-                        <div class="index-values">
-                            <div class="index-ltp" id="index-ltp-SENSEX">--</div>
-                            <div class="index-change" id="index-change-SENSEX">--</div>
-                        </div>
-                        <div class="index-sparkline">
-                            <svg viewBox="0 0 100 30" class="sparkline-svg">
-                                <path d="M0,22 Q15,8 30,20 T60,5 T90,18 L100,10" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-linecap="round"></path>
-                            </svg>
-                        </div>
-                    </div>
-                </div>
-
+                <!-- Dynamically populated via JS -->
             </div>
         </section>
 
         <!-- Bottom Section: Stocks Watchlist (using id sidebar as example of secondary panel) -->
         <section class="stocks-section" id="sidebar" aria-label="Stocks Section">
             <h2>Watchlist Stocks</h2>
+            <div id="watchlist-notification" class="watchlist-notification" style="display: none;"></div>
             <div class="table-responsive">
                 <table class="stocks-table" id="watchlist-table">
                     <thead>
@@ -117,101 +65,7 @@
                         </tr>
                     </thead>
                     <tbody id="stocks-table-body">
-                        <!-- RELIANCE Stock Row -->
-                        <tr class="stock-row" id="stock-row-RELIANCE" data-symbol="RELIANCE">
-                            <td class="stock-symbol font-medium"><span class="star-icon">☆</span>RELIANCE</td>
-                            <td class="stock-ltp text-right" id="stock-ltp-RELIANCE">--</td>
-                            <td class="stock-change text-right" id="stock-change-RELIANCE">--</td>
-                            <td class="stock-bid text-right" id="stock-bid-RELIANCE">--</td>
-                            <td class="stock-ask text-right" id="stock-ask-RELIANCE">--</td>
-                            <td class="stock-volume text-right" id="stock-volume-RELIANCE">--</td>
-                            <td class="stock-open text-right" id="stock-open-RELIANCE">--</td>
-                            <td class="stock-close text-right" id="stock-close-RELIANCE">--</td>
-                        </tr>
-
-                        <!-- HDFCBANK Stock Row -->
-                        <tr class="stock-row" id="stock-row-HDFCBANK" data-symbol="HDFCBANK">
-                            <td class="stock-symbol font-medium"><span class="star-icon">☆</span>HDFCBANK</td>
-                            <td class="stock-ltp text-right" id="stock-ltp-HDFCBANK">--</td>
-                            <td class="stock-change text-right" id="stock-change-HDFCBANK">--</td>
-                            <td class="stock-bid text-right" id="stock-bid-HDFCBANK">--</td>
-                            <td class="stock-ask text-right" id="stock-ask-HDFCBANK">--</td>
-                            <td class="stock-volume text-right" id="stock-volume-HDFCBANK">--</td>
-                            <td class="stock-open text-right" id="stock-open-HDFCBANK">--</td>
-                            <td class="stock-close text-right" id="stock-close-HDFCBANK">--</td>
-                        </tr>
-
-                        <!-- ICICIBANK Stock Row -->
-                        <tr class="stock-row" id="stock-row-ICICIBANK" data-symbol="ICICIBANK">
-                            <td class="stock-symbol font-medium"><span class="star-icon">☆</span>ICICIBANK</td>
-                            <td class="stock-ltp text-right" id="stock-ltp-ICICIBANK">--</td>
-                            <td class="stock-change text-right" id="stock-change-ICICIBANK">--</td>
-                            <td class="stock-bid text-right" id="stock-bid-ICICIBANK">--</td>
-                            <td class="stock-ask text-right" id="stock-ask-ICICIBANK">--</td>
-                            <td class="stock-volume text-right" id="stock-volume-ICICIBANK">--</td>
-                            <td class="stock-open text-right" id="stock-open-ICICIBANK">--</td>
-                            <td class="stock-close text-right" id="stock-close-ICICIBANK">--</td>
-                        </tr>
-
-                        <!-- BHARTIARTL Stock Row -->
-                        <tr class="stock-row" id="stock-row-BHARTIARTL" data-symbol="BHARTIARTL">
-                            <td class="stock-symbol font-medium"><span class="star-icon">☆</span>BHARTIARTL</td>
-                            <td class="stock-ltp text-right" id="stock-ltp-BHARTIARTL">--</td>
-                            <td class="stock-change text-right" id="stock-change-BHARTIARTL">--</td>
-                            <td class="stock-bid text-right" id="stock-bid-BHARTIARTL">--</td>
-                            <td class="stock-ask text-right" id="stock-ask-BHARTIARTL">--</td>
-                            <td class="stock-volume text-right" id="stock-volume-BHARTIARTL">--</td>
-                            <td class="stock-open text-right" id="stock-open-BHARTIARTL">--</td>
-                            <td class="stock-close text-right" id="stock-close-BHARTIARTL">--</td>
-                        </tr>
-
-                        <!-- INFY Stock Row -->
-                        <tr class="stock-row" id="stock-row-INFY" data-symbol="INFY">
-                            <td class="stock-symbol font-medium"><span class="star-icon">☆</span>INFY</td>
-                            <td class="stock-ltp text-right" id="stock-ltp-INFY">--</td>
-                            <td class="stock-change text-right" id="stock-change-INFY">--</td>
-                            <td class="stock-bid text-right" id="stock-bid-INFY">--</td>
-                            <td class="stock-ask text-right" id="stock-ask-INFY">--</td>
-                            <td class="stock-volume text-right" id="stock-volume-INFY">--</td>
-                            <td class="stock-open text-right" id="stock-open-INFY">--</td>
-                            <td class="stock-close text-right" id="stock-close-INFY">--</td>
-                        </tr>
-
-                        <!-- TCS Stock Row -->
-                        <tr class="stock-row" id="stock-row-TCS" data-symbol="TCS">
-                            <td class="stock-symbol font-medium"><span class="star-icon">☆</span>TCS</td>
-                            <td class="stock-ltp text-right" id="stock-ltp-TCS">--</td>
-                            <td class="stock-change text-right" id="stock-change-TCS">--</td>
-                            <td class="stock-bid text-right" id="stock-bid-TCS">--</td>
-                            <td class="stock-ask text-right" id="stock-ask-TCS">--</td>
-                            <td class="stock-volume text-right" id="stock-volume-TCS">--</td>
-                            <td class="stock-open text-right" id="stock-open-TCS">--</td>
-                            <td class="stock-close text-right" id="stock-close-TCS">--</td>
-                        </tr>
-
-                        <!-- HINDUNILVR Stock Row -->
-                        <tr class="stock-row" id="stock-row-HINDUNILVR" data-symbol="HINDUNILVR">
-                            <td class="stock-symbol font-medium"><span class="star-icon">☆</span>HINDUNILVR</td>
-                            <td class="stock-ltp text-right" id="stock-ltp-HINDUNILVR">--</td>
-                            <td class="stock-change text-right" id="stock-change-HINDUNILVR">--</td>
-                            <td class="stock-bid text-right" id="stock-bid-HINDUNILVR">--</td>
-                            <td class="stock-ask text-right" id="stock-ask-HINDUNILVR">--</td>
-                            <td class="stock-volume text-right" id="stock-volume-HINDUNILVR">--</td>
-                            <td class="stock-open text-right" id="stock-open-HINDUNILVR">--</td>
-                            <td class="stock-close text-right" id="stock-close-HINDUNILVR">--</td>
-                        </tr>
-
-                        <!-- BAJFINANCE Stock Row -->
-                        <tr class="stock-row" id="stock-row-BAJFINANCE" data-symbol="BAJFINANCE">
-                            <td class="stock-symbol font-medium"><span class="star-icon">☆</span>BAJFINANCE</td>
-                            <td class="stock-ltp text-right" id="stock-ltp-BAJFINANCE">--</td>
-                            <td class="stock-change text-right" id="stock-change-BAJFINANCE">--</td>
-                            <td class="stock-bid text-right" id="stock-bid-BAJFINANCE">--</td>
-                            <td class="stock-ask text-right" id="stock-ask-BAJFINANCE">--</td>
-                            <td class="stock-volume text-right" id="stock-volume-BAJFINANCE">--</td>
-                            <td class="stock-open text-right" id="stock-open-BAJFINANCE">--</td>
-                            <td class="stock-close text-right" id="stock-close-BAJFINANCE">--</td>
-                        </tr>
+                        <!-- Dynamically populated via JS -->
                     </tbody>
                 </table>
             </div>
@@ -233,6 +87,81 @@
             </div>
             <div id="chart-container"></div>
         </section>
+    </main>
+
+    <!-- Instrument Manager Section -->
+    <main class="instruments-layout" id="instruments-layout" style="display: none;">
+        <div class="instruments-grid-container">
+            <!-- Left Side: Add Instrument Form -->
+            <section class="instrument-form-card" aria-label="Add Instrument Section">
+                <h2 style="font-size: 14px; font-weight: 700; color: var(--text-primary); border-bottom: 1px solid var(--border-color); padding-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Add Instrument</h2>
+                <form id="add-instrument-form" onsubmit="event.preventDefault(); handleAddInstrumentSubmit();" style="display: flex; flex-direction: column; gap: 14px;">
+                    <div class="form-group">
+                        <label for="form-symbol">Symbol</label>
+                        <input type="text" id="form-symbol" placeholder="e.g. RELIANCE" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="form-token">Token</label>
+                        <input type="number" id="form-token" placeholder="e.g. 738561" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="form-exchange">Exchange</label>
+                        <select id="form-exchange" required>
+                            <option value="NSE" selected>NSE</option>
+                            <option value="BSE">BSE</option>
+                            <option value="NFO">NFO</option>
+                            <option value="MCX">MCX</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="form-name">Name</label>
+                        <input type="text" id="form-name" placeholder="e.g. RELIANCE INDUSTRIES" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="form-segment">Segment</label>
+                        <select id="form-segment" required>
+                            <option value="EQ" selected>EQ (Equity)</option>
+                            <option value="IND">IND (Index)</option>
+                            <option value="FUT">FUT (Futures)</option>
+                            <option value="OPT">OPT (Options)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="form-category">Category</label>
+                        <select id="form-category" required>
+                            <option value="STOCK" selected>STOCK</option>
+                            <option value="INDEX">INDEX</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="form-broker">Broker</label>
+                        <input type="text" id="form-broker" value="ZERODHA" placeholder="e.g. ZERODHA" required>
+                    </div>
+                    <button type="submit" class="btn-primary">Add Instrument</button>
+                </form>
+            </section>
+
+            <!-- Right Side: Existing Instruments Table -->
+            <section class="table-responsive" style="margin-top: 0; max-height: calc(100vh - 200px);" aria-label="Existing Instruments Table">
+                <table class="stocks-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Symbol</th>
+                            <th scope="col">Token</th>
+                            <th scope="col">Exchange</th>
+                            <th scope="col">Name</th>
+                            <th scope="col">Segment</th>
+                            <th scope="col">Broker</th>
+                            <th scope="col">Category</th>
+                            <th scope="col" class="text-right" style="padding-right: 24px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="instruments-table-body">
+                        <!-- Dynamically populated via JS -->
+                    </tbody>
+                </table>
+            </section>
+        </div>
     </main>
 
     <footer class="app-footer">

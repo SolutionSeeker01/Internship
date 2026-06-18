@@ -26,13 +26,12 @@ let reconnectTimer = null;
  */
 function handleSnapshot(data) {
     for (const [symbol, marketData] of Object.entries(data)) {
-        if (INDICES.has(symbol)) {
+        if (document.getElementById(`index-card-${symbol}`)) {
             updateIndexCard(symbol, marketData);
         } else {
             updateStockRow(symbol, marketData);
         }
     }
-    updateLeaderHighlight();
     updateMarketStats();
 }
 
@@ -49,11 +48,10 @@ function handleUpdate(data) {
         return;
     }
 
-    if (INDICES.has(symbol)) {
+    if (document.getElementById(`index-card-${symbol}`)) {
         updateIndexCard(symbol, data);
     } else {
         updateStockRow(symbol, data);
-        updateLeaderHighlight();
         updateMarketStats();
 
         // Feed live updates to the historical candlestick chart

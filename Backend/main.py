@@ -11,6 +11,7 @@ logger = get_logger(__name__)
 from routers.websocket import router as ws_router
 from routers.candles import router as candle_router
 from routers.webhook import router as webhook_router
+from routers.instruments import router as instruments_router
 from market_data.kite_client import start_market_data_service
 
 
@@ -26,9 +27,13 @@ async def lifespan(app: FastAPI):
     
     # Initialize database schemas
     try:
-        from database.signal_repository import init_db
-        init_db()
+        from database.signal_repository import init_db as init_signals_db
+        init_signals_db()
         logger.info("Signals database schema successfully initialized.")
+        
+        from database.instrument_repository import init_db as init_instruments_db
+        init_instruments_db()
+        logger.info("Instruments database schema successfully initialized.")
     except Exception as e:
         logger.error(f"Failed to initialize database schema on startup: {e}")
         raise
@@ -83,6 +88,7 @@ app.add_middleware(
 app.include_router(ws_router)
 app.include_router(candle_router)
 app.include_router(webhook_router)
+app.include_router(instruments_router)
 
 
 @app.get("/")

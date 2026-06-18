@@ -207,18 +207,6 @@ async function loadCandles(symbol, interval = selectedInterval) {
 }
 
 function updateLiveCandle(data) {
-    // Temporary diagnostic logging
-    console.log(
-        "LIVE TICK:",
-        data.symbol,
-        data.timestamp,
-        data.ltp
-    );
-    console.log(
-        "SELECTED:",
-        selectedSymbol
-    );
-
     if (!candleSeries) return;
 
     const tickSeconds = parseISOToLocalSeconds(data.timestamp);

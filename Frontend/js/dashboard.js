@@ -6,7 +6,6 @@
 
 console.info("[Dashboard] Module loaded.");
 
-const INDICES = new Set(['NIFTY50', 'BANKNIFTY', 'SENSEX']);
 const TOTAL_STOCKS_COUNT = 8; // Watchlist stock count
 
 /**
@@ -17,8 +16,7 @@ const TOTAL_STOCKS_COUNT = 8; // Watchlist stock count
 const previousLtp = new Map();
 
 /**
- * Tracks the current change % for all active stocks to compute breadth
- * and leader parameters.
+ * Tracks the current change % for all active stocks to compute breadth.
  * @type {Map<string, number>}
  */
 const currentChanges = new Map();
@@ -123,7 +121,7 @@ function triggerFlash(el, cls) {
 }
 
 /* -------------------------------------------------------------
-   MARKET STATISTICS / BREADTH & LEADER
+   MARKET STATISTICS / BREADTH
    ------------------------------------------------------------- */
 
 /**
@@ -136,7 +134,7 @@ function updateMarketStats() {
     let unchanged = 0;
 
     for (const [symbol, change] of currentChanges.entries()) {
-        if (INDICES.has(symbol)) continue;
+        if (document.getElementById(`index-card-${symbol}`)) continue;
         if (change > 0)       advances++;
         else if (change < 0)  declines++;
         else                  unchanged++;
@@ -158,56 +156,6 @@ function updateMarketStats() {
     if (timeEl) {
         const now = new Date();
         timeEl.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
-    }
-}
-
-/**
- * Identifies the stock with the highest positive change percentage
- * and applies leader row formatting and filled gold star logic.
- */
-function updateLeaderHighlight() {
-    let maxChange = -Infinity;
-    let leaderSymbol = null;
-
-    for (const [symbol, change] of currentChanges.entries()) {
-        if (change > 0 && change > maxChange) {
-            maxChange = change;
-            leaderSymbol = symbol;
-        }
-    }
-
-    // Reset leader styles, badges, and stars for all rows
-    document.querySelectorAll('.stock-row').forEach(row => {
-        row.classList.remove('leader-row');
-        const badge = row.querySelector('.leader-badge');
-        if (badge) {
-            badge.remove();
-        }
-        const star = row.querySelector('.star-icon');
-        if (star) {
-            star.textContent = '☆';
-            star.classList.remove('star-active');
-        }
-    });
-
-    // Apply leader styles to the top stock row
-    if (leaderSymbol) {
-        const row = getEl(`stock-row-${leaderSymbol}`);
-        if (row) {
-            row.classList.add('leader-row');
-            const star = row.querySelector('.star-icon');
-            if (star) {
-                star.textContent = '★';
-                star.classList.add('star-active');
-            }
-            const symbolCell = row.querySelector('.stock-symbol');
-            if (symbolCell && !symbolCell.querySelector('.leader-badge')) {
-                const badge = document.createElement('span');
-                badge.className = 'leader-badge';
-                badge.textContent = 'LEADER';
-                symbolCell.appendChild(badge);
-            }
-        }
     }
 }
 
@@ -354,10 +302,6 @@ function setupStockSelection() {
 }
 
 function setupTimeframeSelection() {
-    console.log(
-        "Timeframe selector:",
-        document.querySelector(".timeframe-selector")
-    );
     document.querySelectorAll(".timeframe-btn").forEach(btn => {
         btn.addEventListener("click", () => {
             const interval = btn.getAttribute("data-interval");
@@ -366,4 +310,199 @@ function setupTimeframeSelection() {
             }
         });
     });
+}
+
+/**
+ * Dynamically loads and renders stock watchlist rows based on favorite active instruments.
+ * Falls back to all active instruments if no favorites are selected.
+ */
+async function loadWatchlist() {
+    const tableBody = document.getElementById("stocks-table-body");
+    const indicesContainer = document.getElementById("indices-container");
+    const notification = document.getElementById("watchlist-notification");
+    if (!tableBody) return;
+
+    // --- Scroll Preservation (Issue 2) ---
+    const scrollContainer = tableBody.closest('.table-responsive');
+    const savedScrollTop = scrollContainer ? scrollContainer.scrollTop : 0;
+    const savedSelectedSymbol = selectedSymbol;
+
+    try {
+        const favorites = await getFavoriteInstruments();
+        
+        // 1. Process INDEX instruments (Show favorite indices, max 3)
+        //    Fallback: if no favorites, show NIFTY50, BANKNIFTY, SENSEX from active instruments.
+        let indexDisplay = favorites.filter(inst => (inst.instrument_category || '').toUpperCase() === 'INDEX').slice(0, 3);
+
+        if (indexDisplay.length === 0) {
+            // Fallback: load known default indices from all active instruments
+            const allActive = await getInstruments();
+            const defaultIndexSymbols = ['NIFTY50', 'BANKNIFTY', 'SENSEX'];
+            indexDisplay = allActive.filter(inst =>
+                (inst.instrument_category || '').toUpperCase() === 'INDEX' &&
+                defaultIndexSymbols.includes(inst.symbol)
+            ).slice(0, 3);
+        }
+
+        if (indicesContainer) {
+            if (indexDisplay.length === 0) {
+                indicesContainer.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-secondary); padding: 16px; background: var(--bg-card); border-radius: var(--radius-lg); border: 1px solid var(--border-color); font-size: 13px;">No index instruments found. Add INDEX instruments in Instrument Manager.</div>`;
+            } else {
+                indicesContainer.innerHTML = "";
+                indexDisplay.forEach(ind => {
+                    const card = document.createElement("div");
+                    card.className = "index-card";
+                    card.id = `index-card-${ind.symbol}`;
+                    card.setAttribute("data-symbol", ind.symbol);
+                    
+                    let pathD = "M0,20 Q15,5 30,18 T60,8 T90,14 L100,5"; // Default sparkline path
+                    if (ind.symbol === "BANKNIFTY") {
+                        pathD = "M0,15 Q15,25 30,10 T60,22 T90,5 L100,12";
+                    } else if (ind.symbol === "SENSEX") {
+                        pathD = "M0,22 Q15,8 30,20 T60,5 T90,18 L100,10";
+                    }
+
+                    card.innerHTML = `
+                        <div class="index-header">
+                            <span class="index-symbol">${ind.name || ind.symbol}</span>
+                            <span class="index-badge">${ind.exchange}</span>
+                        </div>
+                        <div class="index-body-wrapper">
+                            <div class="index-values">
+                                <div class="index-ltp" id="index-ltp-${ind.symbol}">--</div>
+                                <div class="index-change" id="index-change-${ind.symbol}">--</div>
+                            </div>
+                            <div class="index-sparkline">
+                                <svg viewBox="0 0 100 30" class="sparkline-svg">
+                                    <path d="${pathD}" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-linecap="round"></path>
+                                </svg>
+                            </div>
+                        </div>
+                    `;
+                    indicesContainer.appendChild(card);
+                });
+            }
+        }
+
+        // 2. Process STOCK instruments (Show favorite stocks, fallback to first 10 active stocks)
+        let displayStocks = favorites.filter(inst => (inst.instrument_category || '').toUpperCase() === 'STOCK');
+        let fallback = false;
+
+        if (displayStocks.length === 0) {
+            fallback = true;
+            console.warn("[Dashboard] Zero favorite stocks found. Falling back to active stocks.");
+            const allActive = await getInstruments();
+            displayStocks = allActive
+                .filter(inst => (inst.instrument_category || '').toUpperCase() === 'STOCK')
+                .slice(0, 10);
+        }
+
+        if (displayStocks.length === 0) {
+            if (notification) {
+                notification.textContent = "No active stocks found in database. Please go to Instrument Manager to add stock instruments.";
+                notification.style.display = "block";
+            }
+            tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary); padding: 24px;">No stocks configured.</td></tr>`;
+            return;
+        }
+
+        if (fallback) {
+            if (notification) {
+                notification.textContent = "Showing all active stocks (no favorite stocks selected).";
+                notification.style.display = "block";
+            }
+        } else {
+            if (notification) {
+                notification.style.display = "none";
+            }
+        }
+
+        tableBody.innerHTML = "";
+        
+        // Dynamically populate stocks watchlist table
+        displayStocks.forEach(inst => {
+            const tr = document.createElement("tr");
+            tr.className = "stock-row";
+            tr.id = `stock-row-${inst.symbol}`;
+            tr.setAttribute("data-symbol", inst.symbol);
+
+            const star = inst.is_favorite ? "★" : "☆";
+            const starClass = inst.is_favorite ? "star-active" : "";
+
+            tr.innerHTML = `
+                <td class="stock-symbol font-medium">
+                    <span class="star-icon ${starClass}" onclick="handleDashboardFavoriteToggle(event, '${inst.symbol}', ${inst.is_favorite})">${star}</span>
+                    ${inst.symbol}
+                </td>
+                <td class="stock-ltp text-right" id="stock-ltp-${inst.symbol}">--</td>
+                <td class="stock-change text-right" id="stock-change-${inst.symbol}">--</td>
+                <td class="stock-bid text-right" id="stock-bid-${inst.symbol}">--</td>
+                <td class="stock-ask text-right" id="stock-ask-${inst.symbol}">--</td>
+                <td class="stock-volume text-right" id="stock-volume-${inst.symbol}">--</td>
+                <td class="stock-open text-right" id="stock-open-${inst.symbol}">--</td>
+                <td class="stock-close text-right" id="stock-close-${inst.symbol}">--</td>
+            `;
+
+            // Restore selected row highlight
+            if (inst.symbol === savedSelectedSymbol) {
+                tr.classList.add('selected-row');
+            }
+
+            tableBody.appendChild(tr);
+        });
+
+        // Preserve selected symbol; only change if it's no longer in the list
+        const symbolStillPresent = displayStocks.some(s => s.symbol === savedSelectedSymbol);
+        if (!symbolStillPresent && displayStocks.length > 0) {
+            selectedSymbol = displayStocks[0].symbol;
+        }
+
+        setupStockSelection();
+
+        // --- Restore Scroll Position (Issue 2) ---
+        if (scrollContainer) {
+            scrollContainer.scrollTop = savedScrollTop;
+        }
+    } catch (err) {
+        console.error("Failed to load watchlist:", err);
+        tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--color-negative); padding: 24px;">Error loading watchlist: ${err.message}</td></tr>`;
+    }
+}
+
+/**
+ * Handles toggling favorite status directly from the Dashboard watchlist.
+ * Uses row-level optimistic UI: only the clicked star is updated.
+ * No table rebuild, no reorder, no scroll jump.
+ */
+async function handleDashboardFavoriteToggle(event, symbol, currentStatus) {
+    event.stopPropagation(); // Prevent triggering stock selection click
+
+    const starEl = event.target;
+    const newStatus = !currentStatus;
+
+    // --- Optimistic UI: flip only the affected star ---
+    starEl.textContent = newStatus ? '★' : '☆';
+    if (newStatus) {
+        starEl.classList.add('star-active');
+    } else {
+        starEl.classList.remove('star-active');
+    }
+    // Update the onclick to reflect the new status for subsequent clicks
+    starEl.setAttribute('onclick', `handleDashboardFavoriteToggle(event, '${symbol}', ${newStatus})`);
+
+    try {
+        await toggleInstrumentFavorite(symbol, newStatus);
+        // Row-level update complete. No table rebuild needed.
+        // The watchlist will resync on next navigation or page load.
+    } catch (err) {
+        console.error(`Failed to toggle favorite from dashboard for ${symbol}:`, err);
+        // --- Revert on failure ---
+        starEl.textContent = currentStatus ? '★' : '☆';
+        if (currentStatus) {
+            starEl.classList.add('star-active');
+        } else {
+            starEl.classList.remove('star-active');
+        }
+        starEl.setAttribute('onclick', `handleDashboardFavoriteToggle(event, '${symbol}', ${currentStatus})`);
+    }
 }

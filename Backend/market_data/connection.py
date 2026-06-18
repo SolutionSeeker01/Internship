@@ -48,10 +48,10 @@ def get_kite() -> KiteConnect:
             raise MissingCredentialsError(error_msg)
 
         try:
-            kite = KiteConnect(api_key=api_key)
+            kite = KiteConnect(api_key=api_key, timeout=10)
             kite.set_access_token(access_token)
             _kite_client = kite
-            logger.info("Centralized KiteConnect client initialized successfully.")
+            logger.info("Centralized KiteConnect client initialized successfully with timeout=10.")
             return _kite_client
         except Exception as e:
             logger.exception("Failed to initialize centralized KiteConnect client.")

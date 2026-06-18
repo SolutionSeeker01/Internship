@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import requests
 from fastapi import APIRouter, HTTPException, Query
 from market_data.subscriptions import get_all_instruments
 from market_data.connection import get_kite
@@ -101,39 +102,67 @@ def get_historical_candles(
     # 5. Retrieve centralized authenticated KiteConnect session
     try:
         kite = get_kite()
+    except Exception as e:
+        logger.error(f"Failed to get centralized Kite client: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to initialize connection to broker."
+        )
 
-        # 6. Fetch historical candles from Zerodha
+    # 6. Fetch historical candles from Zerodha with retry logic
+    historical_data = None
+    try:
         historical_data = kite.historical_data(
             instrument_token=instrument_token,
             from_date=from_date,
             to_date=to_date,
             interval=interval
         )
-
-        # 7. Slice to limit (chronologically oldest to newest, take last N elements)
-        recent_candles = historical_data[-limit:] if historical_data else []
-
-        # 8. Re-format response into EXACT same JSON schema structure returned previously
-        formatted_candles = []
-        for candle in recent_candles:
-            # Format candle date to standard YYYY-MM-DDTHH:MM:SS string
-            date_val = candle.get("date")
-            date_str = date_val.strftime("%Y-%m-%dT%H:%M:%S") if hasattr(date_val, 'strftime') else str(date_val)
-
-            formatted_candles.append({
-                "candle_start": date_str,
-                "open": float(candle["open"]),
-                "high": float(candle["high"]),
-                "low": float(candle["low"]),
-                "close": float(candle["close"]),
-                "volume": int(candle["volume"])
-            })
-
-        return formatted_candles
-
+    except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+        logger.warning(f"Timeout/Connection error fetching historical data for {symbol_upper} on first attempt: {e}. Retrying once...")
+        try:
+            historical_data = kite.historical_data(
+                instrument_token=instrument_token,
+                from_date=from_date,
+                to_date=to_date,
+                interval=interval
+            )
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e2:
+            logger.error(f"Timeout/Connection error fetching historical data for {symbol_upper} on retry: {e2}")
+            raise HTTPException(
+                status_code=504,
+                detail="Timeout retrieving historical data from broker."
+            )
+        except Exception as e2:
+            logger.error(f"Unexpected error fetching historical data for {symbol_upper} on retry: {e2}")
+            raise HTTPException(
+                status_code=502,
+                detail="Unexpected broker error during retry."
+            )
     except Exception as e:
-        logger.error(f"Failed to fetch historical candles from Zerodha for {symbol_upper}: {e}", exc_info=True)
+        logger.error(f"Failed to fetch historical candles from Zerodha for {symbol_upper}: {e}")
         raise HTTPException(
             status_code=500,
             detail="Failed to retrieve historical candlestick data from broker."
         )
+
+    # 7. Slice to limit (chronologically oldest to newest, take last N elements)
+    recent_candles = historical_data[-limit:] if historical_data else []
+
+    # 8. Re-format response into EXACT same JSON schema structure returned previously
+    formatted_candles = []
+    for candle in recent_candles:
+        # Format candle date to standard YYYY-MM-DDTHH:MM:SS string
+        date_val = candle.get("date")
+        date_str = date_val.strftime("%Y-%m-%dT%H:%M:%S") if hasattr(date_val, 'strftime') else str(date_val)
+
+        formatted_candles.append({
+            "candle_start": date_str,
+            "open": float(candle["open"]),
+            "high": float(candle["high"]),
+            "low": float(candle["low"]),
+            "close": float(candle["close"]),
+            "volume": int(candle["volume"])
+        })
+
+    return formatted_candles
