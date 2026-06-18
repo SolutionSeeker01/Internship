@@ -9,8 +9,6 @@ from market_data.subscriptions import get_symbol, get_tokens
 from market_data.store import update_market_data
 from routers.websocket import broadcast_market_update
 from utils.logger import get_logger
-from database.candle_builder import process_tick
-from database.repository import insert_candle
 
 # Set up logging
 logger = get_logger(__name__)
@@ -162,23 +160,7 @@ def on_ticks(ws: KiteTicker, ticks: List[Dict[str, Any]]) -> None:
             else:
                 logger.warning("Main asyncio event loop is not running or unavailable for broadcast.")
 
-            # Database Branch: Independent candle aggregation and database write
-            try:
-                completed_candle = process_tick(normalized_data)
-                if completed_candle is not None:
-                    logger.debug(f"Candle closed: {symbol}")
-                    try:
-                        if _main_loop is not None and _main_loop.is_running():
-                            # Run the synchronous insert_candle inside the main thread's executor pool
-                            # so that database latencies/timeouts never block the KiteTicker callback thread.
-                            _main_loop.run_in_executor(None, insert_candle, completed_candle)
-                        else:
-                            # Fallback to direct call if event loop is unavailable
-                            insert_candle(completed_candle)
-                    except Exception:
-                        logger.exception("Unexpected database error during candle insertion.")
-            except Exception as e:
-                logger.error(f"Failed to process tick for candle: {e}", exc_info=True)
+
 
         except Exception as e:
             logger.error(f"Failed to normalize and store tick for token {token} ({symbol}): {e}", exc_info=True)

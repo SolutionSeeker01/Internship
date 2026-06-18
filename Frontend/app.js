@@ -493,6 +493,7 @@ let chart;
 /** @type {any} */
 let candleSeries;
 let selectedSymbol = "RELIANCE";
+let selectedInterval = "minute";
 let currentCandles = [];
 let lastCumulativeVolume = null;
 
@@ -574,12 +575,24 @@ function initializeChart() {
             secondsVisible: false,
             tickMarkFormatter: (time, tickMarkType, locale) => {
                 const date = new Date(time * 1000);
-                return date.toLocaleTimeString('en-US', {
-                    timeZone: 'Asia/Kolkata',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    hour12: false
-                });
+                const options = { timeZone: 'Asia/Kolkata' };
+                
+                if (tickMarkType === 0) { // Year
+                    options.year = 'numeric';
+                    return date.toLocaleDateString('en-US', options);
+                } else if (tickMarkType === 1) { // Month
+                    options.month = 'short';
+                    return date.toLocaleDateString('en-US', options);
+                } else if (tickMarkType === 2) { // DayOfMonth
+                    options.day = 'numeric';
+                    options.month = 'short';
+                    return date.toLocaleDateString('en-US', options);
+                } else { // Time or TimeWithSeconds
+                    options.hour = '2-digit';
+                    options.minute = '2-digit';
+                    options.hour12 = false;
+                    return date.toLocaleTimeString('en-US', options);
+                }
             }
         },
     });
@@ -600,15 +613,35 @@ function initializeChart() {
     });
 }
 
-async function loadCandles(symbol) {
+async function loadCandles(symbol, interval = selectedInterval) {
     selectedSymbol = symbol;
+    selectedInterval = interval;
     lastCumulativeVolume = null; // Reset volume accumulator for the new symbol
     
-    // Update chart title
+    // Update chart title dynamically
+    const intervalLabels = {
+        "minute": "1 Minute",
+        "3minute": "3 Minute",
+        "5minute": "5 Minute",
+        "15minute": "15 Minute",
+        "30minute": "30 Minute",
+        "60minute": "1 Hour",
+        "day": "Daily"
+    };
+    const label = intervalLabels[interval] || "1 Minute";
     const titleEl = getEl("chart-title");
     if (titleEl) {
-        titleEl.textContent = `${symbol} - 1 Minute Candles`;
+        titleEl.textContent = `${symbol} - ${label} Candles`;
     }
+
+    // Update timeframe buttons active state to match
+    document.querySelectorAll(".timeframe-btn").forEach(btn => {
+        if (btn.getAttribute("data-interval") === interval) {
+            btn.classList.add("active");
+        } else {
+            btn.classList.remove("active");
+        }
+    });
 
     // Update row highlighting
     document.querySelectorAll(".stock-row").forEach(row => {
@@ -620,7 +653,7 @@ async function loadCandles(symbol) {
     });
 
     try {
-        const response = await fetch(`http://127.0.0.1:8000/candles/${symbol}?limit=100`);
+        const response = await fetch(`http://127.0.0.1:8000/candles/${symbol}?interval=${interval}&limit=100`);
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
@@ -678,8 +711,17 @@ function updateLiveCandle(data) {
     const tickSeconds = parseISOToLocalSeconds(data.timestamp);
     if (isNaN(tickSeconds)) return;
 
-    // Truncate to the start of the current minute (in local seconds)
-    const minuteStartSeconds = Math.floor(tickSeconds / 60) * 60;
+    // Determine interval duration in seconds
+    let intervalSeconds = 60;
+    if (selectedInterval === "3minute") intervalSeconds = 180;
+    else if (selectedInterval === "5minute") intervalSeconds = 300;
+    else if (selectedInterval === "15minute") intervalSeconds = 900;
+    else if (selectedInterval === "30minute") intervalSeconds = 1800;
+    else if (selectedInterval === "60minute") intervalSeconds = 3600;
+    else if (selectedInterval === "day") intervalSeconds = 86400;
+
+    // Truncate to the start of the current interval (in local seconds)
+    const intervalStartSeconds = Math.floor(tickSeconds / intervalSeconds) * intervalSeconds;
 
     const tickVolume = Number(data.volume) || 0;
     let volumeDiff = 0;
@@ -690,7 +732,7 @@ function updateLiveCandle(data) {
 
     if (currentCandles.length === 0) {
         const firstCandle = {
-            time: minuteStartSeconds,
+            time: intervalStartSeconds,
             open: Number(data.ltp),
             high: Number(data.ltp),
             low: Number(data.ltp),
@@ -706,8 +748,8 @@ function updateLiveCandle(data) {
 
     const lastCandle = currentCandles[currentCandles.length - 1];
 
-    if (minuteStartSeconds === lastCandle.time) {
-        // Update the active 1-minute candle
+    if (intervalStartSeconds === lastCandle.time) {
+        // Update the active candle
         lastCandle.close = Number(data.ltp);
         if (Number(data.ltp) > lastCandle.high) lastCandle.high = Number(data.ltp);
         if (Number(data.ltp) < lastCandle.low) lastCandle.low = Number(data.ltp);
@@ -715,10 +757,10 @@ function updateLiveCandle(data) {
 
         candleSeries.update(lastCandle);
         chart.timeScale().scrollToRealTime();
-    } else if (minuteStartSeconds > lastCandle.time) {
-        // Roll over and create a new active 1-minute candle
+    } else if (intervalStartSeconds > lastCandle.time) {
+        // Roll over and create a new active candle
         const newCandle = {
-            time: minuteStartSeconds,
+            time: intervalStartSeconds,
             open: Number(data.ltp),
             high: Number(data.ltp),
             low: Number(data.ltp),
@@ -743,6 +785,21 @@ function setupStockSelection() {
     });
 }
 
+function setupTimeframeSelection() {
+    console.log(
+        "Timeframe selector:",
+        document.querySelector(".timeframe-selector")
+    );
+    document.querySelectorAll(".timeframe-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const interval = btn.getAttribute("data-interval");
+            if (interval) {
+                loadCandles(selectedSymbol, interval);
+            }
+        });
+    });
+}
+
 /* -------------------------------------------------------------
    ENTRY POINT
    ------------------------------------------------------------- */
@@ -755,4 +812,5 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeChart();
     loadCandles(selectedSymbol);
     setupStockSelection();
+    setupTimeframeSelection();
 });

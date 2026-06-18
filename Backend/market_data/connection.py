@@ -1,14 +1,61 @@
 import os
-from kiteconnect import KiteTicker
+import threading
+from kiteconnect import KiteConnect, KiteTicker
 from utils.logger import get_logger
 
 # Set up logger for this module
 logger = get_logger(__name__)
 
+# Locks for thread-safe singleton initialization
+_kite_lock = threading.Lock()
+
+# Centralized KiteConnect shared singleton instance
+_kite_client = None
+
 
 class MissingCredentialsError(Exception):
     """Exception raised when required Zerodha credentials are missing from the environment."""
     pass
+
+
+def get_kite() -> KiteConnect:
+    """
+    Returns a shared, centralized, and authenticated KiteConnect client session.
+    Reuses the singleton instance after the first initialization.
+
+    Returns:
+        KiteConnect: The initialized KiteConnect client session.
+
+    Raises:
+        MissingCredentialsError: If required credentials are missing from the environment.
+    """
+    global _kite_client
+    if _kite_client is not None:
+        return _kite_client
+
+    with _kite_lock:
+        # Double-checked locking pattern for thread safety
+        if _kite_client is not None:
+            return _kite_client
+
+        logger.info("Initializing centralized Zerodha KiteConnect client...")
+        api_key = os.getenv("ZERODHA_API_KEY")
+        access_token = os.getenv("ZERODHA_ACCESS_TOKEN")
+
+        if not api_key or not access_token:
+            error_msg = "Missing ZERODHA_API_KEY or ZERODHA_ACCESS_TOKEN environment variables."
+            logger.error(error_msg)
+            raise MissingCredentialsError(error_msg)
+
+        try:
+            kite = KiteConnect(api_key=api_key)
+            kite.set_access_token(access_token)
+            _kite_client = kite
+            logger.info("Centralized KiteConnect client initialized successfully.")
+            return _kite_client
+        except Exception as e:
+            logger.exception("Failed to initialize centralized KiteConnect client.")
+            raise
 
 
 def create_kws() -> KiteTicker:
@@ -18,7 +65,6 @@ def create_kws() -> KiteTicker:
     
     Expected Environment Variables:
         - ZERODHA_API_KEY: The Zerodha developer API key.
-        - ZERODHA_SECRET: The Zerodha developer API secret (validated but not directly passed to KiteTicker).
         - ZERODHA_ACCESS_TOKEN: The active session access token required for WebSocket authentication.
         
     Returns:
@@ -29,29 +75,15 @@ def create_kws() -> KiteTicker:
     """
     logger.info("Initializing Zerodha KiteTicker connection...")
 
-    # 1. Read variables from the environment
     api_key = os.getenv("ZERODHA_API_KEY")
     access_token = os.getenv("ZERODHA_ACCESS_TOKEN")
 
-    # 2. Validate environment variables
-    missing_vars = []
-    if not api_key:
-        missing_vars.append("ZERODHA_API_KEY")
-    if not access_token:
-        missing_vars.append("ZERODHA_ACCESS_TOKEN")
-
-    if missing_vars:
-        error_msg = f"Missing required environment variable(s): {', '.join(missing_vars)}"
+    if not api_key or not access_token:
+        error_msg = "Missing ZERODHA_API_KEY or ZERODHA_ACCESS_TOKEN environment variables."
         logger.error(error_msg)
         raise MissingCredentialsError(error_msg)
 
-    logger.debug("Zerodha credentials successfully validated.")
-
-    # 3. Create KiteTicker instance
     try:
-        # KiteTicker uses api_key and access_token for WebSocket authentication.
-        # The secret is utilized during the initial HTTP handshake/session creation,
-        # but validation ensures it is present for backend processes requiring it.
         kws = KiteTicker(api_key=api_key, access_token=access_token)
         logger.info("KiteTicker instance created successfully.")
         return kws

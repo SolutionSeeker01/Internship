@@ -217,7 +217,18 @@
 
         <!-- Candlestick Chart Section -->
         <section class="chart-section">
-            <h2 id="chart-title">RELIANCE - 1 Minute Candles</h2>
+            <div class="chart-header-row">
+                <h2 id="chart-title">RELIANCE - 1 Minute Candles</h2>
+                <div class="timeframe-selector" id="timeframe-selector">
+                    <button class="timeframe-btn active" data-interval="minute">1m</button>
+                    <button class="timeframe-btn" data-interval="3minute">3m</button>
+                    <button class="timeframe-btn" data-interval="5minute">5m</button>
+                    <button class="timeframe-btn" data-interval="15minute">15m</button>
+                    <button class="timeframe-btn" data-interval="30minute">30m</button>
+                    <button class="timeframe-btn" data-interval="60minute">1h</button>
+                    <button class="timeframe-btn" data-interval="day">1D</button>
+                </div>
+            </div>
             <div id="chart-container"></div>
         </section>
     </main>
