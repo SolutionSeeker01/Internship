@@ -20,6 +20,9 @@ _main_loop: Optional[asyncio.AbstractEventLoop] = None
 # Track processed ticks for high-level health summaries
 _tick_count: int = 0
 
+# Keep track of currently subscribed tokens
+_subscribed_tokens = set()
+
 
 async def _log_periodic_summary() -> None:
     """
@@ -111,6 +114,7 @@ def on_connect(ws: KiteTicker, response: Any) -> None:
     Callback triggered on a successful connection to Zerodha KiteTicker.
     Fetches the configured tokens and registers subscription.
     """
+    global _subscribed_tokens
     logger.info("KiteTicker connected successfully. Setting up subscriptions...")
     try:
         tokens = get_tokens()
@@ -120,10 +124,13 @@ def on_connect(ws: KiteTicker, response: Any) -> None:
             # Set mode to FULL to receive all market depth and ticker fields (ohlc, volume, change)
             ws.set_mode(ws.MODE_FULL, tokens)
             logger.info(f"Successfully subscribed to {len(tokens)} tokens in FULL mode.")
+            _subscribed_tokens = set(tokens)
         else:
             logger.warning("No tokens found in active subscriptions list to subscribe.")
+            _subscribed_tokens = set()
     except Exception as e:
         logger.error(f"Failed to subscribe to instruments on connect: {e}", exc_info=True)
+        _subscribed_tokens = set()
 
 
 def on_ticks(ws: KiteTicker, ticks: List[Dict[str, Any]]) -> None:
@@ -214,4 +221,33 @@ def start_market_data_service(loop: asyncio.AbstractEventLoop) -> None:
     except Exception as e:
         logger.critical(f"Critical error starting market data service: {e}", exc_info=True)
         raise
+
+
+def update_subscriptions() -> None:
+    """
+    Updates the active KiteTicker subscriptions based on the latest cache.
+    Automatically unsubscribes from deleted tokens and subscribes to new tokens.
+    """
+    global _kws, _subscribed_tokens
+    if _kws is not None and _kws.is_connected():
+        try:
+            current_tokens = set(get_tokens())
+            
+            # Unsubscribe from tokens that are no longer in DB cache
+            to_unsubscribe = _subscribed_tokens - current_tokens
+            if to_unsubscribe:
+                _kws.unsubscribe(list(to_unsubscribe))
+                logger.info(f"KiteTicker unsubscribed from {len(to_unsubscribe)} tokens: {list(to_unsubscribe)}")
+            
+            # Subscribe to new/all tokens (subscribe is idempotent in Zerodha library)
+            if current_tokens:
+                _kws.subscribe(list(current_tokens))
+                _kws.set_mode(_kws.MODE_FULL, list(current_tokens))
+                logger.info(f"KiteTicker successfully updated subscriptions to {len(current_tokens)} tokens in FULL mode.")
+            
+            _subscribed_tokens = current_tokens
+        except Exception as e:
+            logger.error(f"Failed to update KiteTicker subscriptions dynamically: {e}")
+    else:
+        logger.warning("KiteTicker is not connected. Subscriptions will load on connect.")
 

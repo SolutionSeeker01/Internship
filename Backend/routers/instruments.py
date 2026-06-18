@@ -52,8 +52,9 @@ class InstrumentCreate(BaseModel):
     @validator("instrument_category")
     def validate_category(cls, v):
         v_upper = v.upper().strip()
-        if v_upper not in ("INDEX", "STOCK"):
-            raise ValueError("Category must be either 'INDEX' or 'STOCK'.")
+        allowed = {"INDEX", "STOCK", "FUTURE", "OPTION", "ETF"}
+        if v_upper not in allowed:
+            raise ValueError(f"Category must be one of: {allowed}")
         return v_upper
 
 class FavoriteUpdate(BaseModel):
@@ -127,6 +128,35 @@ def add_instrument(payload: InstrumentCreate):
             matched_record = inst
             break
 
+    # Debug Log User Input and Matched Record
+    logger.info("--- INSTRUMENT VALIDATION DEBUG ---")
+    logger.info(f"User Input - Symbol: {payload.symbol}, Token: {payload.token}, Exchange: {payload.exchange}, Name: {payload.name}")
+    if matched_record:
+        logger.info(f"Matched Zerodha Record - Tradingsymbol: {matched_record.get('tradingsymbol')}, Instrument Token: {matched_record.get('instrument_token')}, Exchange: {matched_record.get('exchange')}, Name: {matched_record.get('name')}, Segment: {matched_record.get('segment')}")
+    else:
+        logger.info("Matched Zerodha Record: None")
+
+    token_match = "PASS" if matched_record else "FAIL"
+    symbol_match = "FAIL"
+    exchange_match = "FAIL"
+    name_match = "FAIL"
+
+    if matched_record:
+        symbol_match = "PASS" if str(matched_record.get("tradingsymbol") or "").upper() == payload.symbol.upper() else "FAIL"
+        exchange_match = "PASS" if str(matched_record.get("exchange") or "").upper() == exchange_upper else "FAIL"
+        
+        user_name_norm = normalize_string(payload.name)
+        zerodha_name_norm = normalize_string(str(matched_record.get("name") or ""))
+        print(f"DEBUG Name Comparison: repr(user_name)={repr(payload.name)}, repr(zerodha_name)={repr(matched_record.get('name'))}")
+        logger.info(f"DEBUG Name Comparison: repr(user_name)={repr(payload.name)}, repr(zerodha_name)={repr(matched_record.get('name'))}")
+        name_match = "PASS" if user_name_norm == zerodha_name_norm else "FAIL"
+
+    logger.info(f"Token Match: {token_match}")
+    logger.info(f"Symbol Match: {symbol_match}")
+    logger.info(f"Exchange Match: {exchange_match}")
+    logger.info(f"Name Match: {name_match}")
+    logger.info("----------------------------------")
+
     if not matched_record:
         raise HTTPException(
             status_code=400,
@@ -176,24 +206,26 @@ def add_instrument(payload: InstrumentCreate):
             detail="Instrument exists but live market data could not be verified."
         )
 
-    # 4. Insert into database
+    # 4. Insert into database using Zerodha master record fields as the source of truth
     success = db_create(
-        symbol=payload.symbol,
-        token=payload.token,
-        exchange=payload.exchange,
-        name=payload.name,
-        segment=payload.segment,
-        broker=payload.broker,
+        symbol=str(matched_record.get("tradingsymbol") or payload.symbol).upper().strip(),
+        token=int(matched_record.get("instrument_token") or payload.token),
+        exchange=str(matched_record.get("exchange") or payload.exchange).upper().strip(),
+        name=str(matched_record.get("name") or payload.name).strip(),
+        segment=str(matched_record.get("segment") or payload.segment).strip(),
+        broker=payload.broker.strip(),
         instrument_category=payload.instrument_category
     )
     if not success:
         raise HTTPException(status_code=500, detail="Failed to write instrument to database.")
 
-    # Refresh instrument cache
+    # Refresh instrument cache and update active subscriptions
     try:
         reload_instruments()
+        from market_data.kite_client import update_subscriptions
+        update_subscriptions()
     except Exception as e:
-        logger.warning(f"Failed to reload instrument cache (it might be empty of active items): {e}")
+        logger.warning(f"Failed to reload instrument cache or update subscriptions: {e}")
 
     return {"status": "success", "message": f"Instrument '{payload.symbol}' created successfully."}
 
@@ -209,11 +241,13 @@ def delete_instrument(symbol: str = Path(..., min_length=1)):
     if not success:
         raise HTTPException(status_code=404, detail=f"Instrument '{symbol_upper}' not found.")
 
-    # Refresh instrument cache
+    # Refresh instrument cache and update active subscriptions
     try:
         reload_instruments()
+        from market_data.kite_client import update_subscriptions
+        update_subscriptions()
     except Exception as e:
-        logger.warning(f"Failed to reload instrument cache (it might be empty of active items): {e}")
+        logger.warning(f"Failed to reload instrument cache or update subscriptions: {e}")
 
     return {"status": "success", "message": f"Instrument '{symbol_upper}' deleted successfully."}
 
