@@ -135,6 +135,12 @@ async function loadCandles(symbol, interval = selectedInterval) {
     selectedSymbol = symbol;
     selectedInterval = interval;
     lastCumulativeVolume = null; // Reset volume accumulator for the new symbol
+
+    // Hide any existing chart message overlay at start
+    const messageEl = document.getElementById("chart-message");
+    if (messageEl) {
+        messageEl.style.display = "none";
+    }
     
     // Update chart title dynamically
     const intervalLabels = {
@@ -196,6 +202,11 @@ async function loadCandles(symbol, interval = selectedInterval) {
             }
         }
 
+        if (cleanData.length === 0) {
+            showChartError();
+            return;
+        }
+
         if (candleSeries) {
             currentCandles = cleanData;
             candleSeries.setData(currentCandles);
@@ -203,6 +214,7 @@ async function loadCandles(symbol, interval = selectedInterval) {
         }
     } catch (err) {
         console.error(`[Dashboard] Failed to load candles for ${symbol}:`, err);
+        showChartError();
     }
 }
 
@@ -272,4 +284,39 @@ function updateLiveCandle(data) {
         candleSeries.update(newCandle);
         chart.timeScale().scrollToRealTime();
     }
+}
+
+function showChartError() {
+    if (candleSeries) {
+        candleSeries.setData([]);
+    }
+    currentCandles = [];
+
+    const titleEl = getEl("chart-title");
+    if (titleEl) {
+        titleEl.textContent = "";
+    }
+
+    let messageEl = document.getElementById("chart-message");
+    if (!messageEl) {
+        messageEl = document.createElement("div");
+        messageEl.id = "chart-message";
+        messageEl.style.position = "absolute";
+        messageEl.style.top = "50%";
+        messageEl.style.left = "50%";
+        messageEl.style.transform = "translate(-50%, -50%)";
+        messageEl.style.color = "var(--text-secondary)";
+        messageEl.style.fontSize = "16px";
+        messageEl.style.fontWeight = "500";
+        messageEl.style.pointerEvents = "none";
+        messageEl.style.zIndex = "10";
+        
+        const container = getEl("chart-container");
+        if (container) {
+            container.style.position = "relative";
+            container.appendChild(messageEl);
+        }
+    }
+    messageEl.textContent = "No historical data available.";
+    messageEl.style.display = "block";
 }

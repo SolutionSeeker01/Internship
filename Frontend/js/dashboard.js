@@ -476,12 +476,9 @@ async function loadWatchlist() {
         if (scrollContainer) {
             scrollContainer.scrollTop = savedScrollTop;
         }
-        console.log("Render complete.");
-        return [...indexDisplay.map(ind => ind.symbol), ...displayStocks.map(s => s.symbol)];
     } catch (err) {
         console.error("Failed to load watchlist:", err);
         tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--color-negative); padding: 24px;">Error loading watchlist: ${err.message}</td></tr>`;
-        return [];
     }
 }
 
@@ -491,7 +488,6 @@ async function loadWatchlist() {
  * refreshes both index cards and stock rows with scroll preservation.
  */
 async function handleDashboardFavoriteToggle(event, symbol, currentStatus) {
-    console.log("FAVORITE CLICK DETECTED", symbol);
     event.stopPropagation(); // Prevent triggering stock selection click
 
     const starEl = event.target;
@@ -506,18 +502,10 @@ async function handleDashboardFavoriteToggle(event, symbol, currentStatus) {
     }
 
     try {
-        const responseData = await toggleInstrumentFavorite(symbol, newStatus);
-        console.log("PATCH SUCCESS", responseData);
-
-        const immediateFavs = await getFavoriteInstruments();
-        console.log("Favorites API returned:");
-        immediateFavs.forEach(f => console.log(f.symbol));
-
+        await toggleInstrumentFavorite(symbol, newStatus);
         // Refresh dashboard: reloads both index cards and watchlist
         // with scroll position and selected row preserved.
-        const rendered = await loadWatchlist();
-        console.log("Rendered:");
-        rendered.forEach(s => console.log(s));
+        await loadWatchlist();
     } catch (err) {
         console.error(`Failed to toggle favorite from dashboard for ${symbol}:`, err);
         // --- Revert on failure ---

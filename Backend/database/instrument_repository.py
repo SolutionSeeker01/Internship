@@ -180,3 +180,25 @@ def get_favorite_instruments() -> list:
         return []
     finally:
         session.close()
+
+
+def check_duplicate(symbol: str, token: int) -> dict:
+    """
+    Checks if an instrument with the given symbol or token already exists in database.
+    """
+    session = SessionLocal()
+    try:
+        res = session.execute(text("""
+            SELECT 
+                EXISTS(SELECT 1 FROM instruments WHERE UPPER(symbol) = UPPER(:symbol)) as symbol_exists,
+                EXISTS(SELECT 1 FROM instruments WHERE token = :token) as token_exists;
+        """), {"symbol": symbol.upper().strip(), "token": token})
+        row = res.fetchone()
+        if row:
+            return dict(row._mapping)
+        return {"symbol_exists": False, "token_exists": False}
+    except Exception as e:
+        logger.error(f"Error checking duplicate instrument: {e}")
+        return {"symbol_exists": False, "token_exists": False}
+    finally:
+        session.close()

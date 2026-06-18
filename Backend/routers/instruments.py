@@ -1,6 +1,8 @@
 from fastapi import APIRouter, HTTPException, Path, Body
 from pydantic import BaseModel, Field, validator
 import re
+import threading
+from datetime import date
 from typing import List, Dict, Any
 
 from database.instrument_repository import (
@@ -8,12 +10,23 @@ from database.instrument_repository import (
     create_instrument as db_create,
     delete_instrument as db_delete,
     toggle_favorite as db_toggle_favorite,
-    get_favorite_instruments as db_get_favorites
+    get_favorite_instruments as db_get_favorites,
+    check_duplicate as db_check_duplicate
 )
 from market_data.subscriptions import reload_instruments
+from market_data.connection import get_kite
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+# Daily-expiring cache for exchange instruments
+_instruments_cache = {}  # exchange_name -> (date, list_of_instruments)
+_cache_lock = threading.Lock()
+
+def normalize_string(val: str) -> str:
+    if not val:
+        return ""
+    return re.sub(r"\s+", " ", val.strip().upper())
 
 router = APIRouter(prefix="/instruments", tags=["instruments"])
 
@@ -61,9 +74,109 @@ def get_instruments():
 @router.post("")
 def add_instrument(payload: InstrumentCreate):
     """
-    Creates/saves a new instrument in PostgreSQL and reloads the active subscriptions cache.
+    Creates/saves a new instrument in PostgreSQL after metadata and live market validation.
     """
     logger.info(f"POST /instruments: {payload.symbol} ({payload.instrument_category})")
+
+    # 1. Duplicate Check
+    dup = db_check_duplicate(payload.symbol, payload.token)
+    if dup.get("symbol_exists"):
+        raise HTTPException(
+            status_code=400,
+            detail="Instrument with this symbol already exists in database."
+        )
+    if dup.get("token_exists"):
+        raise HTTPException(
+            status_code=400,
+            detail="Instrument with this token already exists in database."
+        )
+
+    # Get authorized KiteConnect instance
+    try:
+        kite = get_kite()
+    except Exception as e:
+        logger.error(f"Failed to get KiteConnect instance during validation: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to validate instrument at this time."
+        )
+
+    # 2. Metadata Validation (with caching)
+    exchange_upper = payload.exchange.upper().strip()
+    today = date.today()
+    
+    with _cache_lock:
+        cached_date, cached_list = _instruments_cache.get(exchange_upper, (None, None))
+        if cached_list is None or cached_date != today:
+            logger.info(f"Fetching master instrument list from Zerodha for exchange: {exchange_upper}")
+            try:
+                fetched_list = kite.instruments(exchange=exchange_upper)
+                _instruments_cache[exchange_upper] = (today, fetched_list)
+                cached_list = fetched_list
+            except Exception as e:
+                logger.error(f"Zerodha master list fetch failed for exchange {exchange_upper}: {e}")
+                raise HTTPException(
+                    status_code=500,
+                    detail="Unable to validate instrument at this time."
+                )
+
+    # Find the master record matching the payload.token
+    matched_record = None
+    for inst in cached_list:
+        if inst.get("instrument_token") == payload.token:
+            matched_record = inst
+            break
+
+    if not matched_record:
+        raise HTTPException(
+            status_code=400,
+            detail="Symbol, token, exchange, or name does not match Zerodha records."
+        )
+
+    # Strict check: exchange and tradingsymbol must match Zerodha record exactly
+    if str(matched_record.get("exchange") or "").upper() != exchange_upper or \
+       str(matched_record.get("tradingsymbol") or "").upper() != payload.symbol.upper():
+        raise HTTPException(
+            status_code=400,
+            detail="Symbol, token, exchange, or name does not match Zerodha records."
+        )
+
+    # Loose check: instrument name comparison (normalized whitespace/casing/trimming)
+    if normalize_string(payload.name) != normalize_string(str(matched_record.get("name") or "")):
+        raise HTTPException(
+            status_code=400,
+            detail="Symbol, token, exchange, or name does not match Zerodha records."
+        )
+
+    # 3. Live Market Validation using authoritative fields from matched record
+    auth_exchange = matched_record.get("exchange")
+    auth_symbol = matched_record.get("tradingsymbol")
+    query_symbol = f"{auth_exchange}:{auth_symbol}"
+
+    try:
+        ltp_res = kite.ltp(query_symbol)
+        if not ltp_res or query_symbol not in ltp_res:
+            raise HTTPException(
+                status_code=400,
+                detail="Instrument exists but live market data could not be verified."
+            )
+        
+        last_price = ltp_res[query_symbol].get("last_price")
+        if last_price is None or not isinstance(last_price, (int, float)) or last_price <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Instrument exists but live market data could not be verified."
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Live market LTP validation failed for {query_symbol}: {e}")
+        raise HTTPException(
+            status_code=400,
+            detail="Instrument exists but live market data could not be verified."
+        )
+
+    # 4. Insert into database
     success = db_create(
         symbol=payload.symbol,
         token=payload.token,

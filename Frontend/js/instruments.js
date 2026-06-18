@@ -128,7 +128,6 @@ async function handleAddInstrumentSubmit() {
  * No table rebuild, no reorder, no scroll jump.
  */
 async function handleToggleFavorite(symbol, currentStatus) {
-    console.log("FAVORITE CLICK DETECTED", symbol);
     const newStatus = !currentStatus;
 
     try {
