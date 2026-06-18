@@ -8,11 +8,13 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Link external styling stylesheet -->
-    <link rel="stylesheet" href="style.css">
+    <!-- Link external styling stylesheets -->
+    <link rel="stylesheet" href="css/common.css">
+    <link rel="stylesheet" href="css/dashboard.css">
+    <link rel="stylesheet" href="css/instruments.css">
 </head>
 <body>
-    <header class="app-header">
+    <header class="app-header" id="header-section">
         <div class="header-container">
             <div class="header-left">
                 <!-- SVG Icon mimicking TradingView/Zerodha style -->
@@ -31,9 +33,9 @@
         </div>
     </header>
 
-    <main class="dashboard-container">
+    <main class="dashboard-container" id="dashboard-layout">
         <!-- Top Section: Indices Grid -->
-        <section class="indices-section" aria-label="Indices Section">
+        <section class="indices-section" id="market-section" aria-label="Indices Section">
             <h2>Market Indices</h2>
             <div class="indices-grid" id="indices-container">
                 
@@ -97,8 +99,8 @@
             </div>
         </section>
 
-        <!-- Bottom Section: Stocks Watchlist -->
-        <section class="stocks-section" aria-label="Stocks Section">
+        <!-- Bottom Section: Stocks Watchlist (using id sidebar as example of secondary panel) -->
+        <section class="stocks-section" id="sidebar" aria-label="Stocks Section">
             <h2>Watchlist Stocks</h2>
             <div class="table-responsive">
                 <table class="stocks-table" id="watchlist-table">
@@ -216,7 +218,7 @@
         </section>
 
         <!-- Candlestick Chart Section -->
-        <section class="chart-section">
+        <section class="chart-section" id="chart-section">
             <div class="chart-header-row">
                 <h2 id="chart-title">RELIANCE - 1 Minute Candles</h2>
                 <div class="timeframe-selector" id="timeframe-selector">
@@ -249,7 +251,13 @@
 
     <!-- Load TradingView Lightweight Charts production CDN -->
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
-    <!-- Load external application script -->
-    <script src="app.js"></script>
+    
+    <!-- Load application scripts -->
+    <script src="js/api.js"></script>
+    <script src="js/instruments.js"></script>
+    <script src="js/dashboard.js"></script>
+    <script src="js/chart.js"></script>
+    <script src="js/websocket.js"></script>
+    <script src="js/app.js"></script>
 </body>
 </html>

@@ -1,0 +1,239 @@
+/* =====================================================
+   ROOT: DESIGN TOKENS (LIGHT THEME TRADING SYSTEM)
+   ===================================================== */
+:root {
+    /* Premium Light Theme Palette */
+    --bg-page:        #f5f7fb; /* Light gray page background */
+    --bg-card:        #ffffff; /* White cards & table backgrounds */
+    --bg-header:      #111827; /* Dark header matching reference image */
+    --bg-table-alt:   #fafafa; /* Subtle alternating row gray */
+    --bg-table-hover: #f3f4f6; /* Gray highlight on hover */
+
+    /* Borders & Dividers */
+    --border-color:   #e5e7eb; /* Soft border gray */
+
+    /* Primary & Secondary Typography */
+    --text-primary:   #111827; /* Near black text */
+    --text-secondary: #6b7280; /* Neutral gray */
+    --text-muted:      #9ca3af; /* Light gray */
+
+    /* Directional Indicator Colors */
+    --color-positive: #16a34a; /* Emerald green */
+    --color-negative: #dc2626; /* Crimson red */
+
+    /* Index Card Sparkline Defaults */
+    --color-sparkline-pos: #16a34a;
+    --color-sparkline-neg: #dc2626;
+
+    /* Theme Accents */
+    --accent-blue:    #3b82f6;
+    --accent-bg:      #eff6ff;
+
+    /* Shadows & Radii */
+    --shadow-premium: 0 1px 3px rgba(0, 0, 0, 0.05), 0 10px 20px rgba(0, 0, 0, 0.04);
+    --radius-lg:      16px;
+    --radius-md:      8px;
+    --radius-sm:      4px;
+
+    /* Spacing variables */
+    --space-md:   16px;
+    --space-lg:   24px;
+    --space-xl:   32px;
+}
+
+/* =====================================================
+   RESET & BASE STYLING
+   ===================================================== */
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    background-color: var(--bg-page);
+    color: var(--text-primary);
+    line-height: 1.5;
+    min-height: 100vh;
+    overflow-y: scroll;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Alignments */
+.text-right { text-align: right; }
+.font-medium { font-weight: 500; }
+
+/* Price Coloring Classes */
+.positive { color: var(--color-positive) !important; }
+.negative { color: var(--color-negative) !important; }
+.neutral  { color: var(--text-secondary) !important; }
+
+/* =====================================================
+   HEADER BAR (DARK DESIGN FROM THE REFERENCE)
+   ===================================================== */
+.app-header {
+    background-color: var(--bg-header);
+    color: #ffffff;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.header-container {
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: 0 var(--space-lg);
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.header-icon {
+    color: var(--accent-blue);
+}
+
+.app-header h1 {
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.2px;
+    color: #ffffff;
+}
+
+/* Connection Status & Clock */
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: var(--space-lg);
+}
+
+.status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    transition: background-color 0.2s ease;
+}
+
+.status-dot.connected {
+    background-color: #10b981;
+    box-shadow: 0 0 8px #10b981;
+}
+
+.status-dot.disconnected {
+    background-color: #ef4444;
+    box-shadow: 0 0 8px #ef4444;
+}
+
+.status-text {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.8px;
+    color: #9ca3af;
+}
+
+.status-dot.connected + .status-text {
+    color: #10b981;
+}
+
+.status-dot.disconnected + .status-text {
+    color: #ef4444;
+}
+
+.header-clock {
+    font-size: 13px;
+    font-weight: 500;
+    color: #9ca3af;
+    font-variant-numeric: tabular-nums;
+}
+
+.theme-toggle {
+    background: none;
+    border: none;
+    color: #9ca3af;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    border-radius: var(--radius-sm);
+    transition: color 0.2s ease;
+}
+
+.theme-toggle:hover {
+    color: #ffffff;
+}
+
+/* =====================================================
+   MARKET BREADTH FOOTER
+   ===================================================== */
+.app-footer {
+    border-top: 1px solid var(--border-color);
+    background-color: var(--bg-card);
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.02);
+}
+
+.footer-container {
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: 12px var(--space-lg);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.market-breadth {
+    display: flex;
+    gap: var(--space-lg);
+}
+
+.breadth-item {
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.breadth-item.advances span {
+    color: var(--color-positive);
+}
+
+.breadth-item.declines span {
+    color: var(--color-negative);
+}
+
+.breadth-item.unchanged span {
+    color: var(--text-secondary);
+}
+
+/* Last updated details */
+.footer-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.last-updated span {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+}
+
+.refresh-btn {
+    font-size: 16px;
+    cursor: pointer;
+    user-select: none;
+    transition: transform 0.2s ease;
+}
+
+.refresh-btn:hover {
+    transform: rotate(90deg);
+}
