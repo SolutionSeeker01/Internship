@@ -26,9 +26,10 @@ let reconnectTimer = null;
  */
 function handleSnapshot(data) {
     for (const [symbol, marketData] of Object.entries(data)) {
+        latestMarketData.set(symbol, marketData);
         if (document.getElementById(`index-card-${symbol}`)) {
             updateIndexCard(symbol, marketData);
-        } else {
+        } else if (document.getElementById(`stock-row-${symbol}`)) {
             updateStockRow(symbol, marketData);
         }
     }
@@ -47,10 +48,11 @@ function handleUpdate(data) {
         console.warn('[Dashboard] Update message missing symbol field:', data);
         return;
     }
+    latestMarketData.set(symbol, data);
 
     if (document.getElementById(`index-card-${symbol}`)) {
         updateIndexCard(symbol, data);
-    } else {
+    } else if (document.getElementById(`stock-row-${symbol}`)) {
         updateStockRow(symbol, data);
         updateMarketStats();
 

@@ -14,7 +14,7 @@
  */
 async function getCandles(symbol, interval, limit = 100) {
     const url = `http://127.0.0.1:8000/candles/${symbol}?interval=${interval}&limit=${limit}`;
-    const response = await fetch(url);
+    const response = await fetch(url, { cache: 'no-store' });
     if (!response.ok) {
         throw new Error(`Failed to fetch candles: ${response.status}`);
     }
@@ -26,7 +26,7 @@ async function getCandles(symbol, interval, limit = 100) {
  * @returns {Promise<Array>}
  */
 async function getInstruments() {
-    const response = await fetch("http://127.0.0.1:8000/instruments");
+    const response = await fetch("http://127.0.0.1:8000/instruments", { cache: 'no-store' });
     if (!response.ok) {
         throw new Error(`Failed to fetch instruments: ${response.status}`);
     }
@@ -97,7 +97,7 @@ async function toggleInstrumentFavorite(symbol, isFavorite) {
  * @returns {Promise<Array>}
  */
 async function getFavoriteInstruments() {
-    const response = await fetch("http://127.0.0.1:8000/instruments/favorites");
+    const response = await fetch("http://127.0.0.1:8000/instruments/favorites", { cache: 'no-store' });
     if (!response.ok) {
         throw new Error(`Failed to fetch favorite instruments: ${response.status}`);
     }

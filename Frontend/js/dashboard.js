@@ -21,6 +21,12 @@ const previousLtp = new Map();
  */
 const currentChanges = new Map();
 
+/**
+ * Tracks the latest market data tick for every symbol.
+ * @type {Map<string, object>}
+ */
+const latestMarketData = new Map();
+
 /* -------------------------------------------------------------
    FORMATTING HELPERS
    ------------------------------------------------------------- */
@@ -336,9 +342,10 @@ async function loadWatchlist() {
 
         if (indexDisplay.length === 0) {
             // Fallback: load known default indices from all active instruments
-            const allActive = await getInstruments();
+            const allInstruments = await getInstruments();
             const defaultIndexSymbols = ['NIFTY50', 'BANKNIFTY', 'SENSEX'];
-            indexDisplay = allActive.filter(inst =>
+            indexDisplay = allInstruments.filter(inst =>
+                inst.active === true &&
                 (inst.instrument_category || '').toUpperCase() === 'INDEX' &&
                 defaultIndexSymbols.includes(inst.symbol)
             ).slice(0, 3);
@@ -380,6 +387,9 @@ async function loadWatchlist() {
                         </div>
                     `;
                     indicesContainer.appendChild(card);
+                    if (latestMarketData.has(ind.symbol)) {
+                        updateIndexCard(ind.symbol, latestMarketData.get(ind.symbol));
+                    }
                 });
             }
         }
@@ -391,9 +401,9 @@ async function loadWatchlist() {
         if (displayStocks.length === 0) {
             fallback = true;
             console.warn("[Dashboard] Zero favorite stocks found. Falling back to active stocks.");
-            const allActive = await getInstruments();
-            displayStocks = allActive
-                .filter(inst => (inst.instrument_category || '').toUpperCase() === 'STOCK')
+            const allInstruments = await getInstruments();
+            displayStocks = allInstruments
+                .filter(inst => inst.active === true && (inst.instrument_category || '').toUpperCase() === 'STOCK')
                 .slice(0, 10);
         }
 
@@ -449,6 +459,9 @@ async function loadWatchlist() {
             }
 
             tableBody.appendChild(tr);
+            if (latestMarketData.has(inst.symbol)) {
+                updateStockRow(inst.symbol, latestMarketData.get(inst.symbol));
+            }
         });
 
         // Preserve selected symbol; only change if it's no longer in the list
@@ -463,37 +476,48 @@ async function loadWatchlist() {
         if (scrollContainer) {
             scrollContainer.scrollTop = savedScrollTop;
         }
+        console.log("Render complete.");
+        return [...indexDisplay.map(ind => ind.symbol), ...displayStocks.map(s => s.symbol)];
     } catch (err) {
         console.error("Failed to load watchlist:", err);
         tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--color-negative); padding: 24px;">Error loading watchlist: ${err.message}</td></tr>`;
+        return [];
     }
 }
 
 /**
  * Handles toggling favorite status directly from the Dashboard watchlist.
- * Uses row-level optimistic UI: only the clicked star is updated.
- * No table rebuild, no reorder, no scroll jump.
+ * Optimistic UI provides instant star feedback, then loadWatchlist()
+ * refreshes both index cards and stock rows with scroll preservation.
  */
 async function handleDashboardFavoriteToggle(event, symbol, currentStatus) {
+    console.log("FAVORITE CLICK DETECTED", symbol);
     event.stopPropagation(); // Prevent triggering stock selection click
 
     const starEl = event.target;
     const newStatus = !currentStatus;
 
-    // --- Optimistic UI: flip only the affected star ---
+    // --- Optimistic UI: flip the star instantly ---
     starEl.textContent = newStatus ? '★' : '☆';
     if (newStatus) {
         starEl.classList.add('star-active');
     } else {
         starEl.classList.remove('star-active');
     }
-    // Update the onclick to reflect the new status for subsequent clicks
-    starEl.setAttribute('onclick', `handleDashboardFavoriteToggle(event, '${symbol}', ${newStatus})`);
 
     try {
-        await toggleInstrumentFavorite(symbol, newStatus);
-        // Row-level update complete. No table rebuild needed.
-        // The watchlist will resync on next navigation or page load.
+        const responseData = await toggleInstrumentFavorite(symbol, newStatus);
+        console.log("PATCH SUCCESS", responseData);
+
+        const immediateFavs = await getFavoriteInstruments();
+        console.log("Favorites API returned:");
+        immediateFavs.forEach(f => console.log(f.symbol));
+
+        // Refresh dashboard: reloads both index cards and watchlist
+        // with scroll position and selected row preserved.
+        const rendered = await loadWatchlist();
+        console.log("Rendered:");
+        rendered.forEach(s => console.log(s));
     } catch (err) {
         console.error(`Failed to toggle favorite from dashboard for ${symbol}:`, err);
         // --- Revert on failure ---
@@ -503,6 +527,5 @@ async function handleDashboardFavoriteToggle(event, symbol, currentStatus) {
         } else {
             starEl.classList.remove('star-active');
         }
-        starEl.setAttribute('onclick', `handleDashboardFavoriteToggle(event, '${symbol}', ${currentStatus})`);
     }
 }
