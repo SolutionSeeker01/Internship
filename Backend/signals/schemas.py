@@ -25,3 +25,12 @@ class WebhookSignalRequest(BaseModel):
     @classmethod
     def validate_symbol(cls, v: str) -> str:
         return v.strip().upper()
+
+    @field_validator('tf')
+    @classmethod
+    def validate_timeframe(cls, v: str) -> str:
+        allowed = {'1', '3', '5', '15', '30', '60', 'D', 'W'}
+        val = str(v).strip()
+        if val not in allowed:
+            raise ValueError(f"Timeframe '{val}' is not allowed. Must be one of: 1, 3, 5, 15, 30, 60, D, W")
+        return val

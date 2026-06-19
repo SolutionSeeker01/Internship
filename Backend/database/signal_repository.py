@@ -95,3 +95,31 @@ def save_signal(
         return False
     finally:
         session.close()
+
+
+def check_duplicate_signal(symbol: str, action: str, entry: float) -> bool:
+    """
+    Checks if a signal with the same symbol, action, and entry price
+    was received within the last 2 minutes.
+    """
+    session = SessionLocal()
+    try:
+        sql = """
+            SELECT COUNT(*) 
+            FROM signals
+            WHERE UPPER(symbol) = :symbol
+              AND UPPER(action) = :action
+              AND entry = :entry
+              AND created_at >= CURRENT_TIMESTAMP - INTERVAL '2 minutes';
+        """
+        count = session.execute(text(sql), {
+            "symbol": symbol.upper().strip(),
+            "action": action.upper().strip(),
+            "entry": entry
+        }).scalar()
+        return count > 0
+    except Exception as e:
+        logger.error(f"Error checking duplicate signal: {e}")
+        return False
+    finally:
+        session.close()
