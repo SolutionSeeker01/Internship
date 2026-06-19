@@ -55,11 +55,11 @@ function handleUpdate(data) {
     } else if (document.getElementById(`stock-row-${symbol}`)) {
         updateStockRow(symbol, data);
         updateMarketStats();
+    }
 
-        // Feed live updates to the historical candlestick chart
-        if (symbol.toUpperCase() === selectedSymbol.toUpperCase()) {
-            updateLiveCandle(data);
-        }
+    // Feed live updates to the historical candlestick chart (decoupled from DOM element check)
+    if (selectedSymbol && symbol.trim().toUpperCase() === selectedSymbol.trim().toUpperCase()) {
+        updateLiveCandle(data);
     }
 }
 

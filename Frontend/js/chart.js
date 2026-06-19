@@ -132,6 +132,10 @@ function initializeChart() {
 }
 
 async function loadCandles(symbol, interval = selectedInterval) {
+    if (!symbol) {
+        clearChart();
+        return;
+    }
     selectedSymbol = symbol;
     selectedInterval = interval;
     lastCumulativeVolume = null; // Reset volume accumulator for the new symbol
@@ -167,12 +171,24 @@ async function loadCandles(symbol, interval = selectedInterval) {
         }
     });
 
-    // Update row highlighting
+    // Update row and index card highlighting with normalization safety
+    const symbol_normalized = symbol.trim().toUpperCase();
+
     document.querySelectorAll(".stock-row").forEach(row => {
-        if (row.getAttribute("data-symbol") === symbol) {
+        const row_symbol = row.getAttribute("data-symbol");
+        if (row_symbol && row_symbol.trim().toUpperCase() === symbol_normalized) {
             row.classList.add("selected-row");
         } else {
             row.classList.remove("selected-row");
+        }
+    });
+
+    document.querySelectorAll(".index-card").forEach(card => {
+        const card_symbol = card.getAttribute("data-symbol");
+        if (card_symbol && card_symbol.trim().toUpperCase() === symbol_normalized) {
+            card.classList.add("selected-card");
+        } else {
+            card.classList.remove("selected-card");
         }
     });
 
@@ -318,5 +334,41 @@ function showChartError() {
         }
     }
     messageEl.textContent = "No historical data available.";
+    messageEl.style.display = "block";
+}
+
+function clearChart() {
+    selectedSymbol = "";
+    if (candleSeries) {
+        candleSeries.setData([]);
+    }
+    currentCandles = [];
+
+    const titleEl = getEl("chart-title");
+    if (titleEl) {
+        titleEl.textContent = "";
+    }
+
+    let messageEl = document.getElementById("chart-message");
+    if (!messageEl) {
+        messageEl = document.createElement("div");
+        messageEl.id = "chart-message";
+        messageEl.style.position = "absolute";
+        messageEl.style.top = "50%";
+        messageEl.style.left = "50%";
+        messageEl.style.transform = "translate(-50%, -50%)";
+        messageEl.style.color = "var(--text-secondary)";
+        messageEl.style.fontSize = "16px";
+        messageEl.style.fontWeight = "500";
+        messageEl.style.pointerEvents = "none";
+        messageEl.style.zIndex = "10";
+        
+        const container = getEl("chart-container");
+        if (container) {
+            container.style.position = "relative";
+            container.appendChild(messageEl);
+        }
+    }
+    messageEl.innerHTML = `No instrument selected.<br><span style="font-size: 13px; font-weight: normal; color: var(--text-secondary);">Select an instrument from the dashboard to view chart data.</span>`;
     messageEl.style.display = "block";
 }

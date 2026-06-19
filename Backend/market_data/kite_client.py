@@ -119,6 +119,11 @@ def on_connect(ws: KiteTicker, response: Any) -> None:
     try:
         tokens = get_tokens()
         if tokens:
+            if len(tokens) > 4000:
+                logger.critical(f"REFUSING SUBSCRIPTION UPDATE: Attempted to subscribe to {len(tokens)} tokens, which exceeds the limit of 4000.")
+                _subscribed_tokens = set()
+                return
+
             # Subscribe to the numerical tokens
             ws.subscribe(tokens)
             # Set mode to FULL to receive all market depth and ticker fields (ohlc, volume, change)
@@ -232,7 +237,10 @@ def update_subscriptions() -> None:
     if _kws is not None and _kws.is_connected():
         try:
             current_tokens = set(get_tokens())
-            
+            if len(current_tokens) > 4000:
+                logger.critical(f"REFUSING SUBSCRIPTION UPDATE: Attempted to subscribe to {len(current_tokens)} tokens, which exceeds the limit of 4000.")
+                return
+
             # Unsubscribe from tokens that are no longer in DB cache
             to_unsubscribe = _subscribed_tokens - current_tokens
             if to_unsubscribe:

@@ -12,6 +12,7 @@ from routers.websocket import router as ws_router
 from routers.candles import router as candle_router
 from routers.webhook import router as webhook_router
 from routers.instruments import router as instruments_router
+from routers.dashboard import router as dashboard_router
 from market_data.kite_client import start_market_data_service
 
 
@@ -89,6 +90,7 @@ app.include_router(ws_router)
 app.include_router(candle_router)
 app.include_router(webhook_router)
 app.include_router(instruments_router)
+app.include_router(dashboard_router)
 
 
 @app.get("/")

@@ -39,8 +39,9 @@ def init_db() -> None:
         # 3. Migrate indices
         session.execute(text("""
             UPDATE instruments 
-            SET instrument_category = 'INDEX' 
-            WHERE symbol IN ('NIFTY50', 'BANKNIFTY', 'SENSEX') AND (instrument_category IS NULL OR instrument_category = 'STOCK');
+            SET instrument_category = 'INDEX', segment = 'IND'
+            WHERE UPPER(symbol) IN ('NIFTY50', 'BANKNIFTY', 'SENSEX', 'NIFTY 50', 'NIFTY BANK') 
+              AND (instrument_category != 'INDEX' OR segment != 'IND');
         """))
         session.commit()
 
@@ -71,6 +72,45 @@ def get_all_instruments() -> list:
     finally:
         session.close()
 
+def search_instruments(query: str, limit: int = 20) -> list:
+    """
+    Search instruments by symbol, name, exchange, segment, broker, category, or token with a limit.
+    """
+    session = SessionLocal()
+    try:
+        is_numeric = query.strip().isdigit()
+        
+        sql = """
+            SELECT id, symbol, token, exchange, name, segment, broker, active, is_favorite, instrument_category, created_at, updated_at
+            FROM instruments
+            WHERE LOWER(symbol) LIKE LOWER(:query)
+               OR LOWER(name) LIKE LOWER(:query)
+               OR LOWER(exchange) LIKE LOWER(:query)
+               OR LOWER(segment) LIKE LOWER(:query)
+               OR LOWER(broker) LIKE LOWER(:query)
+               OR LOWER(instrument_category) LIKE LOWER(:query)
+               OR CAST(token AS VARCHAR) LIKE :query
+        """
+        
+        params = {"query": f"%{query}%", "limit": limit}
+        
+        if is_numeric:
+            sql += " OR token = :token_val"
+            params["token_val"] = int(query.strip())
+            
+        sql += " ORDER BY symbol ASC LIMIT :limit;"
+        
+        result = session.execute(text(sql), params)
+        rows = result.fetchall()
+        return [dict(row._mapping) for row in rows]
+    except Exception as e:
+        logger.error(f"Error searching instruments with query '{query}': {e}")
+        return []
+    finally:
+        session.close()
+
+
+
 def create_instrument(symbol: str, token: int, exchange: str, name: str, segment: str, broker: str, instrument_category: str = "STOCK") -> bool:
     """
     Creates a new instrument.
@@ -81,9 +121,8 @@ def create_instrument(symbol: str, token: int, exchange: str, name: str, segment
             text("""
                 INSERT INTO instruments (symbol, token, exchange, name, segment, broker, active, is_favorite, instrument_category)
                 VALUES (:symbol, :token, :exchange, :name, :segment, :broker, TRUE, FALSE, :instrument_category)
-                ON CONFLICT (symbol) DO UPDATE SET
+                ON CONFLICT (symbol, exchange) DO UPDATE SET
                     token = EXCLUDED.token,
-                    exchange = EXCLUDED.exchange,
                     name = EXCLUDED.name,
                     segment = EXCLUDED.segment,
                     broker = EXCLUDED.broker,
@@ -93,7 +132,7 @@ def create_instrument(symbol: str, token: int, exchange: str, name: str, segment
             {
                 "symbol": symbol.upper().strip(),
                 "token": token,
-                "exchange": exchange.strip(),
+                "exchange": exchange.upper().strip(),
                 "name": name.strip(),
                 "segment": segment.strip(),
                 "broker": broker.strip(),
@@ -101,72 +140,169 @@ def create_instrument(symbol: str, token: int, exchange: str, name: str, segment
             }
         )
         session.commit()
-        logger.info(f"Instrument '{symbol}' created or updated successfully with category '{instrument_category}'.")
+        logger.info(f"Instrument '{symbol}' ({exchange}) created or updated successfully with category '{instrument_category}'.")
         return True
     except Exception as e:
         session.rollback()
-        logger.error(f"Failed to create instrument {symbol}: {e}")
+        logger.error(f"Failed to create instrument {symbol} ({exchange}): {e}")
         return False
     finally:
         session.close()
 
-def delete_instrument(symbol: str) -> bool:
+def delete_instrument(symbol: str, exchange: str) -> bool:
     """
-    Deletes an instrument by its symbol.
+    Deletes an instrument by its symbol and exchange.
     """
     session = SessionLocal()
     try:
         result = session.execute(
-            text("DELETE FROM instruments WHERE UPPER(symbol) = :symbol;"),
-            {"symbol": symbol.upper().strip()}
+            text("DELETE FROM instruments WHERE UPPER(symbol) = :symbol AND UPPER(exchange) = :exchange;"),
+            {"symbol": symbol.upper().strip(), "exchange": exchange.upper().strip()}
         )
         session.commit()
         if result.rowcount > 0:
-            logger.info(f"Instrument '{symbol}' deleted successfully.")
+            logger.info(f"Instrument '{symbol}' ({exchange}) deleted successfully.")
             return True
         else:
-            logger.warning(f"Instrument '{symbol}' not found for deletion.")
+            logger.warning(f"Instrument '{symbol}' ({exchange}) not found for deletion.")
             return False
     except Exception as e:
         session.rollback()
-        logger.error(f"Failed to delete instrument {symbol}: {e}")
+        logger.error(f"Failed to delete instrument {symbol} ({exchange}): {e}")
         return False
     finally:
         session.close()
 
 
-def toggle_favorite(symbol: str, is_favorite: bool) -> bool:
+def toggle_favorite(symbol: str, exchange: str, is_favorite: bool) -> bool:
     """
     Updates the favorite status of an instrument.
+    If favoriting, we also set active = TRUE.
+    If unfavoriting, active is set to FALSE, unless it is a permanent dashboard default instrument.
     """
     session = SessionLocal()
     try:
-        result = session.execute(
-            text("""
+        sym_upper = symbol.upper().strip()
+        exch_upper = exchange.upper().strip()
+        
+        # Permanent defaults list
+        DEFAULT_SYMBOLS = {
+            "RELIANCE", "HDFCBANK", "ICICIBANK", "BHARTIARTL", "INFY",
+            "TCS", "HINDUNILVR", "BAJFINANCE", "SBIN", "ITC",
+            "NIFTY50", "NIFTY 50", "BANKNIFTY", "NIFTY BANK", "SENSEX"
+        }
+
+        if is_favorite:
+            sql = """
                 UPDATE instruments
-                SET is_favorite = :is_favorite, updated_at = CURRENT_TIMESTAMP
-                WHERE UPPER(symbol) = :symbol;
-            """),
-            {"symbol": symbol.upper().strip(), "is_favorite": is_favorite}
+                SET is_favorite = :is_favorite, active = TRUE, updated_at = CURRENT_TIMESTAMP
+                WHERE UPPER(symbol) = :symbol AND UPPER(exchange) = :exchange;
+            """
+        else:
+            if sym_upper in DEFAULT_SYMBOLS:
+                # Keep active = TRUE for defaults
+                sql = """
+                    UPDATE instruments
+                    SET is_favorite = :is_favorite, updated_at = CURRENT_TIMESTAMP
+                    WHERE UPPER(symbol) = :symbol AND UPPER(exchange) = :exchange;
+                """
+            else:
+                # Set active = FALSE for user-specific favorites
+                sql = """
+                    UPDATE instruments
+                    SET is_favorite = :is_favorite, active = FALSE, updated_at = CURRENT_TIMESTAMP
+                    WHERE UPPER(symbol) = :symbol AND UPPER(exchange) = :exchange;
+                """
+
+        result = session.execute(
+            text(sql),
+            {"symbol": sym_upper, "exchange": exch_upper, "is_favorite": is_favorite}
         )
         session.commit()
         if result.rowcount > 0:
-            logger.info(f"Instrument '{symbol}' favorite state set to {is_favorite}.")
+            logger.info(f"Instrument '{symbol}' ({exchange}) favorite state set to {is_favorite}.")
             return True
         return False
     except Exception as e:
         session.rollback()
-        logger.error(f"Failed to update favorite state for {symbol}: {e}")
+        logger.error(f"Failed to update favorite state for {symbol} ({exchange}): {e}")
         return False
     finally:
         session.close()
+
+def upsert_instruments_bulk(instruments_list: list) -> dict:
+    """
+    UPSERTS a list of instruments into the database.
+    Updates only metadata, preserving is_favorite and active flags.
+    """
+    session = SessionLocal()
+    imported = 0
+    updated = 0
+    skipped = 0
+    try:
+        # Pre-query existing instruments' symbol+exchange pairs to determine imported vs updated
+        existing_res = session.execute(text("SELECT symbol, exchange FROM instruments;"))
+        existing_set = {
+            (row._mapping["symbol"].upper(), row._mapping["exchange"].upper())
+            for row in existing_res.fetchall()
+        }
+
+        for inst in instruments_list:
+            symbol = inst["symbol"].upper().strip()
+            exchange = inst["exchange"].upper().strip()
+            token = inst["token"]
+            name = inst["name"]
+            segment = inst["segment"]
+            broker = inst["broker"]
+            category = inst["instrument_category"]
+
+            session.execute(
+                text("""
+                    INSERT INTO instruments (symbol, token, exchange, name, segment, broker, active, is_favorite, instrument_category)
+                    VALUES (:symbol, :token, :exchange, :name, :segment, :broker, FALSE, FALSE, :category)
+                    ON CONFLICT (symbol, exchange) DO UPDATE SET
+                        token = EXCLUDED.token,
+                        name = EXCLUDED.name,
+                        segment = EXCLUDED.segment,
+                        broker = EXCLUDED.broker,
+                        instrument_category = EXCLUDED.instrument_category,
+                        updated_at = CURRENT_TIMESTAMP;
+                """),
+                {
+                    "symbol": symbol,
+                    "token": token,
+                    "exchange": exchange,
+                    "name": name,
+                    "segment": segment,
+                    "broker": broker,
+                    "category": category
+                }
+            )
+            if (symbol, exchange) in existing_set:
+                updated += 1
+            else:
+                imported += 1
+                existing_set.add((symbol, exchange))
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Bulk upsert failed: {e}")
+        raise e
+    finally:
+        session.close()
+    return {"imported": imported, "updated": updated, "skipped": skipped}
 
 def get_favorite_instruments() -> list:
     """
     Retrieves all instruments that are active and marked as favorite.
+    If no favorites exist, returns:
+      - Up to 3 active index instruments (ORDER BY symbol ASC LIMIT 3)
+      - Up to 10 active stock instruments (ORDER BY symbol ASC LIMIT 10)
+    If no active instruments exist, returns empty list.
     """
     session = SessionLocal()
     try:
+        # 1. Fetch active favorites
         result = session.execute(text("""
             SELECT id, symbol, token, exchange, name, segment, broker, active, is_favorite, instrument_category, created_at, updated_at
             FROM instruments
@@ -174,7 +310,34 @@ def get_favorite_instruments() -> list:
             ORDER BY symbol ASC;
         """))
         rows = result.fetchall()
-        return [dict(row._mapping) for row in rows]
+        favorites = [dict(row._mapping) for row in rows]
+        
+        if favorites:
+            return favorites
+
+        # 2. No favorites: fetch fallback indices & stocks
+        result_indices = session.execute(text("""
+            SELECT id, symbol, token, exchange, name, segment, broker, active, is_favorite, instrument_category, created_at, updated_at
+            FROM instruments
+            WHERE active = TRUE 
+              AND UPPER(instrument_category) = 'INDEX'
+            ORDER BY symbol ASC
+            LIMIT 3;
+        """))
+        indices = [dict(row._mapping) for row in result_indices.fetchall()]
+
+        result_stocks = session.execute(text("""
+            SELECT id, symbol, token, exchange, name, segment, broker, active, is_favorite, instrument_category, created_at, updated_at
+            FROM instruments
+            WHERE active = TRUE
+              AND UPPER(instrument_category) = 'STOCK'
+            ORDER BY symbol ASC
+            LIMIT 10;
+        """))
+        stocks = [dict(row._mapping) for row in result_stocks.fetchall()]
+
+        return indices + stocks
+
     except Exception as e:
         logger.error(f"Error fetching favorite instruments: {e}")
         return []
@@ -182,17 +345,17 @@ def get_favorite_instruments() -> list:
         session.close()
 
 
-def check_duplicate(symbol: str, token: int) -> dict:
+def check_duplicate(symbol: str, exchange: str, token: int) -> dict:
     """
-    Checks if an instrument with the given symbol or token already exists in database.
+    Checks if an instrument with the given symbol + exchange or token already exists in database.
     """
     session = SessionLocal()
     try:
         res = session.execute(text("""
             SELECT 
-                EXISTS(SELECT 1 FROM instruments WHERE UPPER(symbol) = UPPER(:symbol)) as symbol_exists,
+                EXISTS(SELECT 1 FROM instruments WHERE UPPER(symbol) = UPPER(:symbol) AND UPPER(exchange) = UPPER(:exchange)) as symbol_exists,
                 EXISTS(SELECT 1 FROM instruments WHERE token = :token) as token_exists;
-        """), {"symbol": symbol.upper().strip(), "token": token})
+        """), {"symbol": symbol.upper().strip(), "exchange": exchange.upper().strip(), "token": token})
         row = res.fetchone()
         if row:
             return dict(row._mapping)
@@ -202,3 +365,232 @@ def check_duplicate(symbol: str, token: int) -> dict:
         return {"symbol_exists": False, "token_exists": False}
     finally:
         session.close()
+
+
+
+def get_dashboard_watchlist() -> dict:
+    """
+    Returns the instruments the dashboard should render, with independent
+    favorite/fallback logic for indices and stocks.
+
+    Fallback uses curated priority lists to ensure the default dashboard
+    shows useful, well-known instruments instead of obscure ones.
+
+    Response structure:
+        {
+            "indices": [...],
+            "stocks":  [...],
+            "view_mode": {
+                "indices": "favorites" | "fallback" | "empty",
+                "stocks":  "favorites" | "fallback" | "empty"
+            }
+        }
+    """
+    # Priority-ordered default instruments for fallback
+    DEFAULT_STOCKS = [
+        "RELIANCE", "HDFCBANK", "ICICIBANK", "BHARTIARTL", "INFY",
+        "TCS", "HINDUNILVR", "BAJFINANCE", "SBIN", "ITC"
+    ]
+    # We query space-padded versions to be robust to Zerodha's symbol name structures
+    DEFAULT_INDICES = [
+        "NIFTY50", "BANKNIFTY", "SENSEX"
+    ]
+    SEARCH_INDICES = [
+        "NIFTY50", "NIFTY 50", "BANKNIFTY", "NIFTY BANK", "SENSEX"
+    ]
+
+    session = SessionLocal()
+    try:
+        columns = "id, symbol, token, exchange, name, segment, broker, active, is_favorite, instrument_category, created_at, updated_at"
+
+        # ── Indices (strictly category = 'INDEX') ────────────────
+        fav_indices_result = session.execute(text(f"""
+            SELECT {columns}
+            FROM instruments
+            WHERE active = TRUE
+              AND UPPER(instrument_category) = 'INDEX'
+              AND is_favorite = TRUE
+            ORDER BY symbol ASC;
+        """))
+        fav_indices = [dict(row._mapping) for row in fav_indices_result.fetchall()]
+
+        if fav_indices:
+            indices = fav_indices
+            indices_mode = "favorites"
+        else:
+            # Fallback: query by priority-ordered default index symbols
+            if SEARCH_INDICES:
+                placeholders = ", ".join([f":idx_{i}" for i in range(len(SEARCH_INDICES))])
+                params = {f"idx_{i}": sym for i, sym in enumerate(SEARCH_INDICES)}
+                fallback_indices_result = session.execute(text(f"""
+                    SELECT {columns}
+                    FROM instruments
+                    WHERE active = TRUE
+                      AND UPPER(instrument_category) = 'INDEX'
+                      AND UPPER(symbol) IN ({placeholders})
+                """), params)
+                fallback_map = {}
+                for row in fallback_indices_result.fetchall():
+                    row_dict = dict(row._mapping)
+                    fallback_map[row_dict["symbol"].upper()] = row_dict
+                
+                # Assemble in the requested priority order, preferring exact or space-spaced match
+                fallback_indices = []
+                
+                # 1. NIFTY50 / NIFTY 50
+                if "NIFTY50" in fallback_map:
+                    fallback_indices.append(fallback_map["NIFTY50"])
+                elif "NIFTY 50" in fallback_map:
+                    fallback_indices.append(fallback_map["NIFTY 50"])
+                    
+                # 2. BANKNIFTY / NIFTY BANK
+                if "BANKNIFTY" in fallback_map:
+                    fallback_indices.append(fallback_map["BANKNIFTY"])
+                elif "NIFTY BANK" in fallback_map:
+                    fallback_indices.append(fallback_map["NIFTY BANK"])
+                    
+                # 3. SENSEX
+                if "SENSEX" in fallback_map:
+                    fallback_indices.append(fallback_map["SENSEX"])
+            else:
+                fallback_indices = []
+
+            if fallback_indices:
+                indices = fallback_indices
+                indices_mode = "fallback"
+            else:
+                indices = []
+                indices_mode = "empty"
+
+        # ── Stocks & Others (strictly category != 'INDEX') ────────
+        fav_stocks_result = session.execute(text(f"""
+            SELECT {columns}
+            FROM instruments
+            WHERE active = TRUE
+              AND UPPER(instrument_category) != 'INDEX'
+              AND is_favorite = TRUE
+            ORDER BY symbol ASC;
+        """))
+        fav_stocks = [dict(row._mapping) for row in fav_stocks_result.fetchall()]
+
+        if fav_stocks:
+            stocks = fav_stocks
+            stocks_mode = "favorites"
+        else:
+            # Fallback: query by priority-ordered default stock symbols
+            if DEFAULT_STOCKS:
+                placeholders = ", ".join([f":stk_{i}" for i in range(len(DEFAULT_STOCKS))])
+                params = {f"stk_{i}": sym for i, sym in enumerate(DEFAULT_STOCKS)}
+                fallback_stocks_result = session.execute(text(f"""
+                    SELECT {columns}
+                    FROM instruments
+                    WHERE active = TRUE
+                      AND UPPER(instrument_category) != 'INDEX'
+                      AND UPPER(symbol) IN ({placeholders})
+                """), params)
+                fallback_map = {}
+                for row in fallback_stocks_result.fetchall():
+                    row_dict = dict(row._mapping)
+                    fallback_map[row_dict["symbol"].upper()] = row_dict
+                # Preserve priority ordering
+                fallback_stocks = [fallback_map[s.upper()] for s in DEFAULT_STOCKS if s.upper() in fallback_map]
+            else:
+                fallback_stocks = []
+
+            if fallback_stocks:
+                stocks = fallback_stocks
+                stocks_mode = "fallback"
+            else:
+                stocks = []
+                stocks_mode = "empty"
+
+        return {
+            "indices": indices,
+            "stocks": stocks,
+            "view_mode": {
+                "indices": indices_mode,
+                "stocks": stocks_mode
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"Error fetching dashboard watchlist: {e}")
+        return {
+            "indices": [],
+            "stocks": [],
+            "view_mode": {
+                "indices": "empty",
+                "stocks": "empty"
+            }
+        }
+    finally:
+        session.close()
+
+
+def delete_all_instruments() -> int:
+    """
+    Deletes ALL instruments from the database.
+    Returns the number of rows deleted.
+    """
+    session = SessionLocal()
+    try:
+        result = session.execute(text("DELETE FROM instruments;"))
+        session.commit()
+        count = result.rowcount
+        logger.info(f"All instruments deleted. Rows affected: {count}")
+        return count
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Failed to delete all instruments: {e}")
+        raise e
+    finally:
+        session.close()
+
+
+def get_favorites_count(category: str) -> int:
+    """
+    Returns the count of active favorite instruments for a given category.
+    If category is 'INDEX', counts indices.
+    Otherwise, counts non-INDEX favorites (STOCK, ETF, FUTURE, OPTION).
+    """
+    session = SessionLocal()
+    try:
+        if category == "INDEX":
+            res = session.execute(text("""
+                SELECT COUNT(*) FROM instruments 
+                WHERE active = TRUE AND is_favorite = TRUE AND UPPER(instrument_category) = 'INDEX';
+            """))
+        else:
+            res = session.execute(text("""
+                SELECT COUNT(*) FROM instruments 
+                WHERE active = TRUE AND is_favorite = TRUE AND UPPER(instrument_category) != 'INDEX';
+            """))
+        return res.scalar() or 0
+    except Exception as e:
+        logger.error(f"Error getting favorites count for category {category}: {e}")
+        return 0
+    finally:
+        session.close()
+
+
+def get_instrument_by_symbol_exchange(symbol: str, exchange: str) -> dict:
+    """
+    Retrieves a single instrument by symbol and exchange.
+    """
+    session = SessionLocal()
+    try:
+        res = session.execute(text("""
+            SELECT id, symbol, token, exchange, name, segment, broker, active, is_favorite, instrument_category
+            FROM instruments
+            WHERE UPPER(symbol) = :symbol AND UPPER(exchange) = :exchange;
+        """), {"symbol": symbol.upper().strip(), "exchange": exchange.upper().strip()})
+        row = res.fetchone()
+        if row:
+            return dict(row._mapping)
+        return None
+    except Exception as e:
+        logger.error(f"Error fetching instrument {symbol} on {exchange}: {e}")
+        return None
+    finally:
+        session.close()
+

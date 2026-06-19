@@ -92,61 +92,125 @@
     <!-- Instrument Manager Section -->
     <main class="instruments-layout" id="instruments-layout" style="display: none;">
         <div class="instruments-grid-container">
-            <!-- Left Side: Add Instrument Form -->
-            <section class="instrument-form-card" aria-label="Add Instrument Section">
-                <h2 style="font-size: 14px; font-weight: 700; color: var(--text-primary); border-bottom: 1px solid var(--border-color); padding-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Add Instrument</h2>
-                <form id="add-instrument-form" onsubmit="event.preventDefault(); handleAddInstrumentSubmit();" style="display: flex; flex-direction: column; gap: 14px;">
-                    <div class="form-group">
-                        <label for="form-symbol">Symbol</label>
-                        <input type="text" id="form-symbol" placeholder="e.g. RELIANCE" required>
+            <!-- Left Side: Add Instrument Form and Instrument Sync -->
+            <div style="display: flex; flex-direction: column; gap: 16px;">
+                <section class="instrument-form-card" aria-label="Add Instrument Section">
+                    <h2 style="font-size: 14px; font-weight: 700; color: var(--text-primary); border-bottom: 1px solid var(--border-color); padding-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Add Instrument</h2>
+                    <form id="add-instrument-form" onsubmit="event.preventDefault(); handleAddInstrumentSubmit();" style="display: flex; flex-direction: column; gap: 14px;">
+                        <div class="form-group">
+                            <label for="form-symbol">Symbol</label>
+                            <input type="text" id="form-symbol" placeholder="e.g. RELIANCE" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="form-token">Token</label>
+                            <input type="number" id="form-token" placeholder="e.g. 738561" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="form-exchange">Exchange</label>
+                            <select id="form-exchange" required>
+                                <option value="NSE" selected>NSE</option>
+                                <option value="BSE">BSE</option>
+                                <option value="NFO">NFO</option>
+                                <option value="MCX">MCX</option>
+                                <option value="CDS">CDS</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="form-name">Name</label>
+                            <input type="text" id="form-name" placeholder="e.g. RELIANCE INDUSTRIES" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="form-segment">Segment</label>
+                            <select id="form-segment" required>
+                                <option value="EQ" selected>EQ (Equity)</option>
+                                <option value="IND">IND (Index)</option>
+                                <option value="ETF">ETF (ETF)</option>
+                                <option value="FUT">FUT (Futures)</option>
+                                <option value="OPT">OPT (Options)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="form-category">Category</label>
+                            <select id="form-category" required>
+                                <option value="STOCK" selected>STOCK</option>
+                                <option value="INDEX">INDEX</option>
+                                <option value="FUTURE">FUTURE</option>
+                                <option value="OPTION">OPTION</option>
+                                <option value="ETF">ETF</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="form-broker">Broker</label>
+                            <input type="text" id="form-broker" value="ZERODHA" placeholder="e.g. ZERODHA" required>
+                        </div>
+                        <button type="submit" class="btn-primary">Add Instrument</button>
+                    </form>
+                </section>
+
+                <section class="instrument-form-card" aria-label="Instrument Sync Section">
+                    <h2 style="font-size: 14px; font-weight: 700; color: var(--text-primary); border-bottom: 1px solid var(--border-color); padding-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Instrument Sync</h2>
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        <div>
+                            <label style="font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">Exchanges</label>
+                            <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px;">
+                                <label style="font-size: 13px; color: var(--text-primary); display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                                    <input type="checkbox" id="sync-exch-nse" value="NSE" checked> NSE
+                                </label>
+                                <label style="font-size: 13px; color: var(--text-primary); display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                                    <input type="checkbox" id="sync-exch-bse" value="BSE" checked> BSE
+                                </label>
+                                <label style="font-size: 13px; color: var(--text-primary); display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                                    <input type="checkbox" id="sync-exch-nfo" value="NFO" checked> NFO
+                                </label>
+                                <label style="font-size: 13px; color: var(--text-primary); display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                                    <input type="checkbox" id="sync-exch-mcx" value="MCX" checked> MCX
+                                </label>
+                                <label style="font-size: 13px; color: var(--text-primary); display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                                    <input type="checkbox" id="sync-exch-cds" value="CDS" checked> CDS
+                                </label>
+                            </div>
+                        </div>
+                        <div>
+                            <label style="font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">Segments</label>
+                            <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px;">
+                                <label style="font-size: 13px; color: var(--text-primary); display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                                    <input type="checkbox" id="sync-seg-eq" value="EQ" checked> EQ
+                                </label>
+                                <label style="font-size: 13px; color: var(--text-primary); display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                                    <input type="checkbox" id="sync-seg-ind" value="IND" checked> IND
+                                </label>
+                                <label style="font-size: 13px; color: var(--text-primary); display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                                    <input type="checkbox" id="sync-seg-etf" value="ETF" checked> ETF
+                                </label>
+                                <label style="font-size: 13px; color: var(--text-primary); display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                                    <input type="checkbox" id="sync-seg-fut" value="FUT"> FUT
+                                </label>
+                                <label style="font-size: 13px; color: var(--text-primary); display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                                    <input type="checkbox" id="sync-seg-opt" value="OPT"> OPT
+                                </label>
+                            </div>
+                        </div>
+                        <button type="button" class="btn-primary" id="btn-sync-instruments" onclick="handleSyncInstruments()" style="margin-top: 6px;">Sync Instruments</button>
+                        <div id="sync-status-msg" style="font-size: 12px; color: var(--text-secondary); display: none; line-height: 1.4; margin-top: 4px; white-space: pre-line;"></div>
                     </div>
-                    <div class="form-group">
-                        <label for="form-token">Token</label>
-                        <input type="number" id="form-token" placeholder="e.g. 738561" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="form-exchange">Exchange</label>
-                        <select id="form-exchange" required>
-                            <option value="NSE" selected>NSE</option>
-                            <option value="BSE">BSE</option>
-                            <option value="NFO">NFO</option>
-                            <option value="MCX">MCX</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="form-name">Name</label>
-                        <input type="text" id="form-name" placeholder="e.g. RELIANCE INDUSTRIES" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="form-segment">Segment</label>
-                        <select id="form-segment" required>
-                            <option value="EQ" selected>EQ (Equity)</option>
-                            <option value="IND">IND (Index)</option>
-                            <option value="FUT">FUT (Futures)</option>
-                            <option value="OPT">OPT (Options)</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="form-category">Category</label>
-                        <select id="form-category" required>
-                            <option value="STOCK" selected>STOCK</option>
-                            <option value="INDEX">INDEX</option>
-                            <option value="FUTURE">FUTURE</option>
-                            <option value="OPTION">OPTION</option>
-                            <option value="ETF">ETF</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="form-broker">Broker</label>
-                        <input type="text" id="form-broker" value="ZERODHA" placeholder="e.g. ZERODHA" required>
-                    </div>
-                    <button type="submit" class="btn-primary">Add Instrument</button>
-                </form>
-            </section>
+                </section>
+
+                <section class="instrument-form-card" aria-label="Danger Zone">
+                    <h2 style="font-size: 14px; font-weight: 700; color: var(--color-negative); border-bottom: 1px solid var(--border-color); padding-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Danger Zone</h2>
+                    <p style="font-size: 12px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 12px;">
+                        Permanently remove all instruments, favorites, and synced data from the database.
+                    </p>
+                    <button type="button" class="btn-primary" id="btn-clear-all-instruments" onclick="handleClearAllInstruments()" style="background: var(--color-negative); margin-top: 0;">Clear All Instruments</button>
+                </section>
+            </div>
 
             <!-- Right Side: Existing Instruments Table -->
-            <section class="table-responsive" style="margin-top: 0; max-height: calc(100vh - 200px);" aria-label="Existing Instruments Table">
-                <table class="stocks-table">
+            <div style="display: flex; flex-direction: column; gap: 14px; min-width: 0;">
+                <div class="search-container">
+                    <input type="text" id="search-instruments-input" placeholder="Search instruments..." style="width: 100%; max-width: 400px; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-md); font-size: 14px; color: var(--text-primary); background-color: #ffffff;" />
+                </div>
+                <section class="table-responsive" style="margin-top: 0; max-height: calc(100vh - 250px);" aria-label="Existing Instruments Table">
+                    <table class="stocks-table">
                     <thead>
                         <tr>
                             <th scope="col">Symbol</th>
@@ -165,7 +229,8 @@
                 </table>
             </section>
         </div>
-    </main>
+    </div>
+</main>
 
     <footer class="app-footer">
         <div class="footer-container">
