@@ -75,30 +75,53 @@ def get_all_instruments() -> list:
 def search_instruments(query: str, limit: int = 20) -> list:
     """
     Search instruments by symbol, name, exchange, segment, broker, category, or token with a limit.
+    Results are ranked by match relevance:
+    1. Exact symbol match
+    2. Symbol starts with query
+    3. Symbol contains query
+    4. Company name contains query
+    5. Exchange, Segment, Category, Broker, or Token match
     """
     session = SessionLocal()
     try:
-        is_numeric = query.strip().isdigit()
+        clean_query = query.upper().strip()
+        is_numeric = clean_query.isdigit()
         
         sql = """
             SELECT id, symbol, token, exchange, name, segment, broker, active, is_favorite, instrument_category, created_at, updated_at
             FROM instruments
-            WHERE LOWER(symbol) LIKE LOWER(:query)
-               OR LOWER(name) LIKE LOWER(:query)
-               OR LOWER(exchange) LIKE LOWER(:query)
-               OR LOWER(segment) LIKE LOWER(:query)
-               OR LOWER(broker) LIKE LOWER(:query)
-               OR LOWER(instrument_category) LIKE LOWER(:query)
-               OR CAST(token AS VARCHAR) LIKE :query
+            WHERE UPPER(symbol) LIKE :contains_query
+               OR UPPER(name) LIKE :contains_query
+               OR UPPER(exchange) LIKE :contains_query
+               OR UPPER(segment) LIKE :contains_query
+               OR UPPER(broker) LIKE :contains_query
+               OR UPPER(instrument_category) LIKE :contains_query
+               OR CAST(token AS VARCHAR) LIKE :contains_query
         """
         
-        params = {"query": f"%{query}%", "limit": limit}
+        params = {
+            "exact_query": clean_query,
+            "starts_with_query": f"{clean_query}%",
+            "contains_query": f"%{clean_query}%",
+            "limit": limit
+        }
         
         if is_numeric:
             sql += " OR token = :token_val"
-            params["token_val"] = int(query.strip())
+            params["token_val"] = int(clean_query)
             
-        sql += " ORDER BY symbol ASC LIMIT :limit;"
+        sql += """
+            ORDER BY 
+                CASE
+                    WHEN UPPER(symbol) = :exact_query THEN 1
+                    WHEN UPPER(symbol) LIKE :starts_with_query THEN 2
+                    WHEN UPPER(symbol) LIKE :contains_query THEN 3
+                    WHEN UPPER(name) LIKE :contains_query THEN 4
+                    ELSE 5
+                END ASC,
+                symbol ASC
+            LIMIT :limit;
+        """
         
         result = session.execute(text(sql), params)
         rows = result.fetchall()
