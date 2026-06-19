@@ -1,6 +1,7 @@
 from sqlalchemy.sql import text
 from database.db import SessionLocal
 from utils.logger import get_logger
+from database.defaults import DEFAULT_SYMBOLS, DEFAULT_STOCKS, DEFAULT_INDICES
 
 logger = get_logger(__name__)
 
@@ -208,12 +209,7 @@ def toggle_favorite(symbol: str, exchange: str, is_favorite: bool) -> bool:
         sym_upper = symbol.upper().strip()
         exch_upper = exchange.upper().strip()
         
-        # Permanent defaults list
-        DEFAULT_SYMBOLS = {
-            "RELIANCE", "HDFCBANK", "ICICIBANK", "BHARTIARTL", "INFY",
-            "TCS", "HINDUNILVR", "BAJFINANCE", "SBIN", "ITC",
-            "NIFTY50", "NIFTY 50", "BANKNIFTY", "NIFTY BANK", "SENSEX"
-        }
+
 
         if is_favorite:
             sql = """
@@ -264,19 +260,14 @@ def upsert_instruments_bulk(instruments_list: list) -> dict:
     updated = 0
     skipped = 0
     try:
-        # Permanent defaults list
-        DEFAULT_SYMBOLS = {
-            "RELIANCE", "HDFCBANK", "ICICIBANK", "BHARTIARTL", "INFY",
-            "TCS", "HINDUNILVR", "BAJFINANCE", "SBIN", "ITC",
-            "NIFTY50", "NIFTY 50", "BANKNIFTY", "NIFTY BANK", "SENSEX"
-        }
-
         # Pre-query existing instruments' symbol+exchange pairs to determine imported vs updated
         existing_res = session.execute(text("SELECT symbol, exchange FROM instruments;"))
         existing_set = {
             (row._mapping["symbol"].upper(), row._mapping["exchange"].upper())
             for row in existing_res.fetchall()
         }
+
+        symbols_list_str = ", ".join(f"'{s}'" for s in DEFAULT_SYMBOLS)
 
         for inst in instruments_list:
             symbol = inst["symbol"].upper().strip()
@@ -291,7 +282,7 @@ def upsert_instruments_bulk(instruments_list: list) -> dict:
             active_val = True if is_default else False
 
             session.execute(
-                text("""
+                text(f"""
                     INSERT INTO instruments (symbol, token, exchange, name, segment, broker, active, is_favorite, instrument_category)
                     VALUES (:symbol, :token, :exchange, :name, :segment, :broker, :active_val, FALSE, :category)
                     ON CONFLICT (symbol, exchange) DO UPDATE SET
@@ -299,11 +290,7 @@ def upsert_instruments_bulk(instruments_list: list) -> dict:
                         name = EXCLUDED.name,
                         segment = EXCLUDED.segment,
                         broker = EXCLUDED.broker,
-                        active = CASE WHEN EXCLUDED.symbol IN (
-                            'RELIANCE', 'HDFCBANK', 'ICICIBANK', 'BHARTIARTL', 'INFY',
-                            'TCS', 'HINDUNILVR', 'BAJFINANCE', 'SBIN', 'ITC',
-                            'NIFTY50', 'NIFTY 50', 'BANKNIFTY', 'NIFTY BANK', 'SENSEX'
-                        ) THEN TRUE ELSE instruments.active END,
+                        active = CASE WHEN EXCLUDED.symbol IN ({symbols_list_str}) THEN TRUE ELSE instruments.active END,
                         instrument_category = EXCLUDED.instrument_category,
                         updated_at = CURRENT_TIMESTAMP;
                 """),
@@ -426,15 +413,6 @@ def get_dashboard_watchlist() -> dict:
             }
         }
     """
-    # Priority-ordered default instruments for fallback
-    DEFAULT_STOCKS = [
-        "RELIANCE", "HDFCBANK", "ICICIBANK", "BHARTIARTL", "INFY",
-        "TCS", "HINDUNILVR", "BAJFINANCE", "SBIN", "ITC"
-    ]
-    # We query space-padded versions to be robust to Zerodha's symbol name structures
-    DEFAULT_INDICES = [
-        "NIFTY50", "BANKNIFTY", "SENSEX"
-    ]
     SEARCH_INDICES = [
         "NIFTY50", "NIFTY 50", "BANKNIFTY", "NIFTY BANK", "SENSEX"
     ]

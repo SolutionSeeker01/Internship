@@ -419,6 +419,8 @@ def sync_instruments(payload: SyncRequest):
 
     for inst in master_list:
         mapped = map_zerodha_instrument(inst)
+        if mapped["exchange"] != "NSE":
+            continue
         if mapped["exchange"] in exchanges_set and mapped["segment"] in segments_set:
             filtered_instruments.append(mapped)
 

@@ -233,13 +233,8 @@ async function handleSyncInstruments() {
     const statusMsg = document.getElementById("sync-status-msg");
     if (!btn || !statusMsg) return;
 
-    // Collect Exchanges
-    const exchanges = [];
-    if (document.getElementById("sync-exch-nse")?.checked) exchanges.push("NSE");
-    if (document.getElementById("sync-exch-bse")?.checked) exchanges.push("BSE");
-    if (document.getElementById("sync-exch-nfo")?.checked) exchanges.push("NFO");
-    if (document.getElementById("sync-exch-mcx")?.checked) exchanges.push("MCX");
-    if (document.getElementById("sync-exch-cds")?.checked) exchanges.push("CDS");
+    // Collect Exchanges - NSE-only branch requirement
+    const exchanges = ["NSE"];
 
     // Collect Segments
     const segments = [];
