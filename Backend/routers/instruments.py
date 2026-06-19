@@ -430,14 +430,14 @@ def sync_instruments(payload: SyncRequest):
             imported = results["imported"]
             updated = results["updated"]
             # Reload runtime cache to ensure newly synced active instruments (if any) are indexed.
-            # (Though sync updates db only, and existing cache refresh mechanisms remain intact,
-            # this makes sure subscriptions.py is re-synced if needed).
             reload_instruments()
+            from market_data.kite_client import update_subscriptions
+            update_subscriptions()
         except Exception as e:
-            logger.error(f"Database error during bulk upsert: {e}")
+            logger.error(f"Database error during bulk upsert or subscription update: {e}")
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to write synced instruments to database: {str(e)}"
+                detail=f"Failed to write synced instruments or update subscriptions: {str(e)}"
             )
     else:
         imported = 0

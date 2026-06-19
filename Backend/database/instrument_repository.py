@@ -256,13 +256,21 @@ def toggle_favorite(symbol: str, exchange: str, is_favorite: bool) -> bool:
 def upsert_instruments_bulk(instruments_list: list) -> dict:
     """
     UPSERTS a list of instruments into the database.
-    Updates only metadata, preserving is_favorite and active flags.
+    Updates only metadata, preserving is_favorite and active flags, 
+    but ensures that permanent default dashboard instruments are always active.
     """
     session = SessionLocal()
     imported = 0
     updated = 0
     skipped = 0
     try:
+        # Permanent defaults list
+        DEFAULT_SYMBOLS = {
+            "RELIANCE", "HDFCBANK", "ICICIBANK", "BHARTIARTL", "INFY",
+            "TCS", "HINDUNILVR", "BAJFINANCE", "SBIN", "ITC",
+            "NIFTY50", "NIFTY 50", "BANKNIFTY", "NIFTY BANK", "SENSEX"
+        }
+
         # Pre-query existing instruments' symbol+exchange pairs to determine imported vs updated
         existing_res = session.execute(text("SELECT symbol, exchange FROM instruments;"))
         existing_set = {
@@ -279,15 +287,23 @@ def upsert_instruments_bulk(instruments_list: list) -> dict:
             broker = inst["broker"]
             category = inst["instrument_category"]
 
+            is_default = symbol in DEFAULT_SYMBOLS
+            active_val = True if is_default else False
+
             session.execute(
                 text("""
                     INSERT INTO instruments (symbol, token, exchange, name, segment, broker, active, is_favorite, instrument_category)
-                    VALUES (:symbol, :token, :exchange, :name, :segment, :broker, FALSE, FALSE, :category)
+                    VALUES (:symbol, :token, :exchange, :name, :segment, :broker, :active_val, FALSE, :category)
                     ON CONFLICT (symbol, exchange) DO UPDATE SET
                         token = EXCLUDED.token,
                         name = EXCLUDED.name,
                         segment = EXCLUDED.segment,
                         broker = EXCLUDED.broker,
+                        active = CASE WHEN EXCLUDED.symbol IN (
+                            'RELIANCE', 'HDFCBANK', 'ICICIBANK', 'BHARTIARTL', 'INFY',
+                            'TCS', 'HINDUNILVR', 'BAJFINANCE', 'SBIN', 'ITC',
+                            'NIFTY50', 'NIFTY 50', 'BANKNIFTY', 'NIFTY BANK', 'SENSEX'
+                        ) THEN TRUE ELSE instruments.active END,
                         instrument_category = EXCLUDED.instrument_category,
                         updated_at = CURRENT_TIMESTAMP;
                 """),
@@ -298,7 +314,8 @@ def upsert_instruments_bulk(instruments_list: list) -> dict:
                     "name": name,
                     "segment": segment,
                     "broker": broker,
-                    "category": category
+                    "category": category,
+                    "active_val": active_val
                 }
             )
             if (symbol, exchange) in existing_set:
