@@ -5,7 +5,7 @@ from kiteconnect import KiteTicker
 
 # Import from local modules
 from market_data.connection import create_kws
-from market_data.subscriptions import get_symbol, get_tokens
+from market_data.subscriptions import get_symbol, get_tokens, get_instrument_metadata
 from market_data.store import update_market_data
 from routers.websocket import broadcast_market_update
 from utils.logger import get_logger
@@ -43,7 +43,7 @@ async def _log_periodic_summary() -> None:
             logger.error(f"Error in periodic logging task: {e}")
 
 
-def normalize_tick(tick: Dict[str, Any], symbol: str) -> Dict[str, Any]:
+def normalize_tick(tick: Dict[str, Any], symbol: str, exchange: str) -> Dict[str, Any]:
     """
     Normalizes a raw tick dict from Zerodha KiteTicker into a standardized application format.
     
@@ -53,6 +53,7 @@ def normalize_tick(tick: Dict[str, Any], symbol: str) -> Dict[str, Any]:
     Args:
         tick (Dict[str, Any]): Raw tick data from KiteTicker callback.
         symbol (str): The matching application symbol (e.g., 'RELIANCE').
+        exchange (str): The exchange the tick belongs to (e.g., 'NSE').
         
     Returns:
         Dict[str, Any]: Normalized tick data.
@@ -95,6 +96,7 @@ def normalize_tick(tick: Dict[str, Any], symbol: str) -> Dict[str, Any]:
 
     return {
         "symbol": symbol,
+        "exchange": exchange,
         "token": tick.get("instrument_token"),
         "ltp": tick.get("last_price", 0.0),
         "change": tick.get("change", 0.0),
@@ -153,13 +155,15 @@ def on_ticks(ws: KiteTicker, ticks: List[Dict[str, Any]]) -> None:
             logger.warning("Received a tick with missing instrument_token.")
             continue
             
-        symbol = get_symbol(token)
-        if not symbol:
+        meta = get_instrument_metadata(token)
+        if not meta:
             continue
-
+        symbol = meta["symbol"]
+        exchange = meta["exchange"]
+ 
         try:
-            normalized_data = normalize_tick(tick, symbol)
-            update_market_data(symbol, normalized_data)
+            normalized_data = normalize_tick(tick, symbol, exchange)
+            update_market_data(token, normalized_data)
 
             # Schedule the asynchronous WebSocket broadcast on the main thread event loop thread-safely.
             # This does not block the KiteTicker callback thread.

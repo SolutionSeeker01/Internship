@@ -7,43 +7,27 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 
 # Internal thread-safe lock to synchronize read/write access to the store.
-# Since KiteTicker updates run in a separate background thread while
-# FastAPI and WebSocket clients query/read from the main thread,
-# thread safety is crucial to prevent concurrent modification issues.
 _store_lock = threading.Lock()
 
-# The in-memory database holding the latest tick data per symbol.
-# Key: Trading symbol (e.g., "RELIANCE")
+# The in-memory database holding the latest tick data per token.
+# Key: Instrument token (int, e.g., 738561)
 # Value: Normalized tick data dictionary
-_market_data_store: Dict[str, Dict[str, Any]] = {}
+_market_data_store: Dict[int, Dict[str, Any]] = {}
 
 
-def update_market_data(symbol: str, data: Dict[str, Any]) -> None:
+def update_market_data(token: int, data: Dict[str, Any]) -> None:
     """
-    Updates the in-memory store with the latest market data for the given symbol.
-    
-    If the symbol already exists, its data is updated (or merged). Otherwise,
-    a new entry is created.
-    
-    Args:
-        symbol (str): The unified trading symbol (e.g., 'RELIANCE').
-        data (Dict[str, Any]): Normalized dictionary containing tick details (ltp, volume, open, high, etc.).
+    Updates the in-memory store with the latest market data for the given token.
     """
     with _store_lock:
-        # Shallow copy is usually fine, but deepcopy protects against nested dictionary modifications.
-        # Storing a copy ensures that external mutations to the input dict do not affect the store.
-        _market_data_store[symbol] = deepcopy(data)
+        _market_data_store[token] = deepcopy(data)
         
-    logger.debug(f"Updated market data in store for symbol: {symbol}")
+    logger.debug(f"Updated market data in store for token: {token}")
 
 
-def get_market_data() -> Dict[str, Dict[str, Any]]:
+def get_market_data() -> Dict[int, Dict[str, Any]]:
     """
     Returns the full snapshot of the current market data.
-    
-    Returns:
-        Dict[str, Dict[str, Any]]: A deep copy of the full market data snapshot
-                                   to prevent concurrent read/write race conditions.
     """
     with _store_lock:
         return deepcopy(_market_data_store)
@@ -51,20 +35,31 @@ def get_market_data() -> Dict[str, Dict[str, Any]]:
 
 def get_symbol_data(symbol: str) -> Optional[Dict[str, Any]]:
     """
-    Retrieves the latest market data for a single symbol.
-    
-    Args:
-        symbol (str): The unified trading symbol (e.g., 'RELIANCE').
-        
-    Returns:
-        Optional[Dict[str, Any]]: A deep copy of the symbol's market data if found,
-                                  otherwise None.
+    Retrieves the latest market data for a single symbol (prefers NSE).
     """
+    symbol_upper = symbol.upper().strip()
     with _store_lock:
-        data = _market_data_store.get(symbol)
-        
-    if data is None:
-        logger.debug(f"Symbol {symbol} requested but not present in store.")
-        return None
-        
-    return deepcopy(data)
+        # First pass: try to find NSE
+        for data in _market_data_store.values():
+            if str(data.get("symbol") or "").upper().strip() == symbol_upper and \
+               str(data.get("exchange") or "").upper().strip() == "NSE":
+                return deepcopy(data)
+        # Second pass: fallback to any exchange
+        for data in _market_data_store.values():
+            if str(data.get("symbol") or "").upper().strip() == symbol_upper:
+                return deepcopy(data)
+    return None
+
+
+def get_symbol_exchange_data(symbol: str, exchange: str) -> Optional[Dict[str, Any]]:
+    """
+    Retrieves the latest market data matching both symbol and exchange.
+    """
+    symbol_upper = symbol.upper().strip()
+    exchange_upper = exchange.upper().strip()
+    with _store_lock:
+        for data in _market_data_store.values():
+            if str(data.get("symbol") or "").upper().strip() == symbol_upper and \
+               str(data.get("exchange") or "").upper().strip() == exchange_upper:
+                return deepcopy(data)
+    return None
