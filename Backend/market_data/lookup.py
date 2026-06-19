@@ -2,6 +2,7 @@ import time
 from typing import Optional, Dict, Tuple
 import threading
 from market_data.connection import get_kite
+from market_data.store import get_symbol_exchange_data
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -16,43 +17,51 @@ CACHE_TTL_SECONDS = 30.0
 
 def get_market_price(symbol: str) -> Optional[float]:
     """
-    Authoritative helper to retrieve the last traded price (LTP) for a symbol directly from Zerodha.
-    Probes exchanges (NSE first, then BSE) with built-in caching (TTL = 30 seconds).
+    Authoritative helper to retrieve the last traded price (LTP) for a symbol.
+    Strictly checks the NSE exchange in the live cache first, then queries Zerodha only for NSE.
     
     Returns:
-        Optional[float]: The last traded price if found, otherwise None.
+        Optional[float]: The last traded price if found on NSE, otherwise None.
     """
     sym_upper = symbol.upper().strip()
     now = time.time()
     
-    # 1. Check in-memory cache
+    # 1. Check live memory store for NSE LTP first (Fast path)
+    try:
+        store_data = get_symbol_exchange_data(sym_upper, "NSE")
+        if store_data and store_data.get("ltp") is not None:
+            ltp = store_data["ltp"]
+            if isinstance(ltp, (int, float)) and ltp > 0:
+                logger.debug(f"LTP live store hit for {sym_upper} (NSE): {ltp}")
+                return ltp
+    except Exception as e:
+        logger.warning(f"Error checking live store for {sym_upper} (NSE): {e}")
+
+    # 2. Check local TTL cache (NSE only)
     with _cache_lock:
         if sym_upper in _LTP_CACHE:
             cached_price, cached_time = _LTP_CACHE[sym_upper]
             if now - cached_time < CACHE_TTL_SECONDS:
-                logger.debug(f"LTP cache hit for {sym_upper}: {cached_price}")
+                logger.debug(f"LTP TTL cache hit for {sym_upper} (NSE): {cached_price}")
                 return cached_price
             
-    # 2. Cache miss - query Zerodha Kite Connect
+    # 3. Cache miss - query Zerodha Kite Connect strictly for NSE
     try:
         kite = get_kite()
-        # Query both exchanges in one go to minimize network roundtrips
-        query_symbols = [f"NSE:{sym_upper}", f"BSE:{sym_upper}"]
-        ltp_res = kite.ltp(query_symbols)
+        query_symbol = f"NSE:{sym_upper}"
+        ltp_res = kite.ltp([query_symbol])
         
-        if ltp_res:
-            for q_sym in query_symbols:
-                if q_sym in ltp_res and ltp_res[q_sym].get("last_price") is not None:
-                    price = ltp_res[q_sym]["last_price"]
-                    if isinstance(price, (int, float)) and price > 0:
-                        # Store in cache and return
-                        with _cache_lock:
-                            _LTP_CACHE[sym_upper] = (price, now)
-                        logger.info(f"LTP lookup succeeded for {sym_upper}: {price} via {q_sym}")
-                        return price
+        if ltp_res and query_symbol in ltp_res and ltp_res[query_symbol].get("last_price") is not None:
+            price = ltp_res[query_symbol]["last_price"]
+            if isinstance(price, (int, float)) and price > 0:
+                # Store in TTL cache and return
+                with _cache_lock:
+                    _LTP_CACHE[sym_upper] = (price, now)
+                logger.info(f"Authoritative live LTP lookup succeeded for {sym_upper} (NSE): {price}")
+                return price
                         
-        logger.warning(f"LTP lookup returned no valid price for {sym_upper} on NSE/BSE.")
+        logger.warning(f"LTP lookup returned no valid price for {sym_upper} on NSE.")
     except Exception as e:
-        logger.warning(f"Failed authoritative live market price lookup for {sym_upper}: {e}")
+        logger.warning(f"Failed authoritative live market price lookup for {sym_upper} (NSE): {e}")
         
     return None
