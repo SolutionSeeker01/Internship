@@ -300,8 +300,9 @@ function setupStockSelection() {
     document.querySelectorAll(".stock-row").forEach(row => {
         row.addEventListener("click", () => {
             const symbol = row.getAttribute("data-symbol");
+            const exchange = row.getAttribute("data-exchange");
             if (symbol) {
-                loadCandles(symbol);
+                loadCandles(symbol, exchange);
             }
         });
     });
@@ -312,8 +313,9 @@ function setupIndexSelection() {
     document.querySelectorAll(".index-card").forEach(card => {
         card.addEventListener("click", () => {
             const symbol = card.getAttribute("data-symbol");
+            const exchange = card.getAttribute("data-exchange");
             if (symbol) {
-                loadCandles(symbol);
+                loadCandles(symbol, exchange);
             }
         });
     });
@@ -324,7 +326,7 @@ function setupTimeframeSelection() {
         btn.addEventListener("click", () => {
             const interval = btn.getAttribute("data-interval");
             if (interval) {
-                loadCandles(selectedSymbol, interval);
+                loadCandles(selectedSymbol, null, interval);
             }
         });
     });
@@ -397,6 +399,7 @@ async function loadWatchlist() {
                     card.className = "index-card";
                     card.id = `index-card-${ind.symbol}`;
                     card.setAttribute("data-symbol", ind.symbol);
+                    card.setAttribute("data-exchange", ind.exchange);
 
                     let pathD = "M0,20 Q15,5 30,18 T60,8 T90,14 L100,5"; // Default sparkline path
                     if (ind.symbol === "BANKNIFTY") {
@@ -407,8 +410,7 @@ async function loadWatchlist() {
 
                     card.innerHTML = `
                         <div class="index-header">
-                            <span class="index-symbol">${ind.name || ind.symbol}</span>
-                            <span class="index-badge">${ind.exchange}</span>
+                            <span class="index-symbol">${ind.symbol} | ${ind.exchange}</span>
                         </div>
                         <div class="index-body-wrapper">
                             <div class="index-values">
@@ -440,6 +442,7 @@ async function loadWatchlist() {
                 tr.className = "stock-row";
                 tr.id = `stock-row-${inst.symbol}`;
                 tr.setAttribute("data-symbol", inst.symbol);
+                tr.setAttribute("data-exchange", inst.exchange);
 
                 const star = inst.is_favorite ? "★" : "☆";
                 const starClass = inst.is_favorite ? "star-active" : "";
@@ -447,7 +450,7 @@ async function loadWatchlist() {
                 tr.innerHTML = `
                     <td class="stock-symbol font-medium">
                         <span class="star-icon ${starClass}" onclick="handleDashboardFavoriteToggle(event, '${inst.symbol}', '${inst.exchange}', ${inst.is_favorite})">${star}</span>
-                        ${inst.symbol}
+                        ${inst.symbol} | ${inst.exchange}
                     </td>
                     <td class="stock-ltp text-right" id="stock-ltp-${inst.symbol}">--</td>
                     <td class="stock-change text-right" id="stock-change-${inst.symbol}">--</td>
@@ -472,9 +475,11 @@ async function loadWatchlist() {
         }
 
         // Preserve selected symbol; clear chart if it's no longer in either list (stocks or indices)
-        const symbolStillPresent = stocks.some(s => s.symbol === savedSelectedSymbol) || indices.some(i => i.symbol === savedSelectedSymbol);
+        const symbolStillPresent = stocks.some(s => s.symbol === savedSelectedSymbol && s.exchange === selectedExchange) || 
+                                   indices.some(i => i.symbol === savedSelectedSymbol && i.exchange === selectedExchange);
         if (savedSelectedSymbol && !symbolStillPresent) {
             selectedSymbol = "";
+            selectedExchange = "";
             if (typeof clearChart === "function") {
                 clearChart();
             }
@@ -513,6 +518,9 @@ async function handleDashboardFavoriteToggle(event, symbol, exchange, currentSta
 
     try {
         await toggleInstrumentFavorite(symbol, exchange, newStatus);
+        if (typeof invalidateInstrumentsCache === "function") {
+            invalidateInstrumentsCache();
+        }
         // Refresh dashboard: reloads both index cards and watchlist
         // with scroll position and selected row preserved.
         await loadWatchlist();

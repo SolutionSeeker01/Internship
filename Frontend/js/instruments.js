@@ -47,6 +47,7 @@ function switchView(view) {
         if (searchInput) {
             searchInput.value = "";
         }
+        invalidateInstrumentsCache();
         loadInstrumentsManagerTable();
     }
 }
@@ -56,29 +57,21 @@ function switchView(view) {
  * Uses cached data when available (non-search). Search always hits the backend.
  * When using cached data, renders instantly without a "Loading..." flash.
  */
-async function loadInstrumentsManagerTable(searchQuery = "") {
+async function loadInstrumentsManagerTable() {
     const tableBody = document.getElementById("instruments-table-body");
     if (!tableBody) return;
 
     try {
-        let instruments;
-        if (searchQuery.trim()) {
-            // Search always uses backend API — never cached
-            tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary); padding: 24px;">Searching...</td></tr>`;
-            instruments = await searchInstruments(searchQuery.trim());
-        } else if (cachedInstruments !== null) {
-            // Cache hit — render directly, no loading flash
-            instruments = cachedInstruments;
-            console.info("[Instruments] Using cached data.");
+        if (cachedInstruments !== null) {
+            renderInstrumentsTable(tableBody, cachedInstruments);
+            console.info("[Instruments] Using cached favorites.");
         } else {
-            // Cache miss — show loading indicator while fetching
-            tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary); padding: 24px;">Loading instruments...</td></tr>`;
-            instruments = await getInstruments();
+            tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary); padding: 24px;">Loading watchlist...</td></tr>`;
+            const instruments = (await getFavoriteInstruments()).filter(inst => inst.is_favorite);
             cachedInstruments = instruments;
-            console.info("[Instruments] Fetched and cached.");
+            console.info("[Instruments] Fetched and cached favorites.");
+            renderInstrumentsTable(tableBody, instruments);
         }
-
-        renderInstrumentsTable(tableBody, instruments);
     } catch (err) {
         console.error("Failed to load instruments table:", err);
         tableBody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--color-negative); padding: 24px;">Error loading instruments: ${err.message}</td></tr>`;
@@ -93,7 +86,7 @@ async function loadInstrumentsManagerTable(searchQuery = "") {
  */
 function renderInstrumentsTable(tableBody, instruments) {
     if (instruments.length === 0) {
-        tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary); padding: 24px;">No instruments found.</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary); padding: 24px;">No instruments in watchlist. Search above to add.</td></tr>`;
         return;
     }
 
@@ -128,6 +121,78 @@ function renderInstrumentsTable(tableBody, instruments) {
 }
 
 /**
+ * Renders search results in the dropdown container.
+ * @param {Array} results 
+ */
+function renderSearchDropdown(results) {
+    const dropdown = document.getElementById("search-results-dropdown");
+    if (!dropdown) return;
+
+    dropdown.innerHTML = "";
+    if (results.length === 0) {
+        dropdown.innerHTML = `<div style="padding: 12px; text-align: center; color: var(--text-secondary); font-size: 13px;">No results found</div>`;
+    } else {
+        results.forEach(inst => {
+            const item = document.createElement("div");
+            item.style.padding = "10px 12px";
+            item.style.borderBottom = "1px solid var(--border-color)";
+            item.style.cursor = "pointer";
+            item.style.display = "flex";
+            item.style.justifyContent = "space-between";
+            item.style.alignItems = "center";
+            item.style.background = "#ffffff";
+            item.style.transition = "background 0.2s";
+
+            item.addEventListener("mouseenter", () => {
+                item.style.background = "var(--bg-body)";
+            });
+            item.addEventListener("mouseleave", () => {
+                item.style.background = "#ffffff";
+            });
+            
+            // Check if this is already in the watchlist/favorites
+            const isFav = cachedInstruments ? cachedInstruments.some(c => c.symbol === inst.symbol && c.exchange === inst.exchange && c.is_favorite) : inst.is_favorite;
+            
+            item.innerHTML = `
+                <div style="display: flex; flex-direction: column; min-width: 0;">
+                    <span style="font-weight: 600; font-size: 13px; color: var(--text-primary);">${inst.symbol} <span style="font-size: 10px; color: var(--text-secondary); background: var(--bg-card); padding: 2px 4px; border-radius: 4px; margin-left: 4px;">${inst.exchange}</span></span>
+                    <span style="font-size: 11px; color: var(--text-secondary); text-overflow: ellipsis; white-space: nowrap; overflow: hidden; max-width: 250px;">${inst.name}</span>
+                </div>
+                <button class="btn-action btn-fav ${isFav ? 'active' : ''}" style="margin-left: auto; padding: 4px 8px; font-size: 11px; margin-top: 0; min-height: 28px;" onclick="event.stopPropagation(); handleSearchToggleFavorite('${inst.symbol}', '${inst.exchange}', ${isFav})">
+                    ${isFav ? '★ Favorite' : '☆ Add'}
+                </button>
+            `;
+            dropdown.appendChild(item);
+        });
+    }
+    dropdown.style.display = "block";
+}
+
+/**
+ * Handles toggling favorite state from the search results dropdown.
+ */
+async function handleSearchToggleFavorite(symbol, exchange, currentStatus) {
+    const newStatus = !currentStatus;
+    try {
+        await toggleInstrumentFavorite(symbol, exchange, newStatus);
+        invalidateInstrumentsCache();
+        
+        // Reload the watchlist table (extremely fast since watchlist is small)
+        await loadInstrumentsManagerTable();
+        
+        // Re-render search dropdown to show updated favorite status
+        const searchInput = document.getElementById("search-instruments-input");
+        if (searchInput) {
+            const results = await searchInstruments(searchInput.value.trim());
+            renderSearchDropdown(results);
+        }
+    } catch (err) {
+        console.error(`Failed to toggle favorite from search for ${symbol} (${exchange}):`, err);
+        alert(`Error: ${err.message}`);
+    }
+}
+
+/**
  * Handles "Add Instrument" form submission.
  */
 async function handleAddInstrumentSubmit() {
@@ -151,7 +216,7 @@ async function handleAddInstrumentSubmit() {
 
     try {
         const result = await createInstrument(payload);
-        alert(result.message || "Instrument added successfully.");
+        alert(result.message || "Instrument added successfully. Use search to find and add it to your watchlist.");
         
         // Reset form inputs (except broker default)
         symbolInput.value = "";
@@ -161,10 +226,8 @@ async function handleAddInstrumentSubmit() {
         segmentInput.selectedIndex = 0;
         categoryInput.selectedIndex = 0;
         
-        // Invalidate cache and refresh table
+        // Invalidate cache
         invalidateInstrumentsCache();
-        const searchInput = document.getElementById("search-instruments-input");
-        loadInstrumentsManagerTable(searchInput ? searchInput.value : "");
     } catch (err) {
         console.error("Failed to add instrument:", err);
         alert(`Failed to add instrument: ${err.message}`);
@@ -172,9 +235,8 @@ async function handleAddInstrumentSubmit() {
 }
 
 /**
- * Handles toggling favorite state of an instrument.
+ * Handles toggling favorite state of an instrument in the watchlist table.
  * Row-level update: only the affected button is modified in-place.
- * No table rebuild, no reorder, no scroll jump.
  */
 async function handleToggleFavorite(symbol, exchange, currentStatus) {
     const newStatus = !currentStatus;
@@ -186,15 +248,20 @@ async function handleToggleFavorite(symbol, exchange, currentStatus) {
         // --- Row-level DOM update (no table rebuild) ---
         const row = document.querySelector(`.instrument-row[data-symbol="${symbol}"][data-exchange="${exchange}"]`);
         if (row) {
-            const favBtn = row.querySelector('.btn-fav');
-            if (favBtn) {
-                favBtn.textContent = newStatus ? '★ Favorite' : '☆ Favorite';
-                if (newStatus) {
-                    favBtn.classList.add('active');
-                } else {
-                    favBtn.classList.remove('active');
+            if (!newStatus) {
+                // Removing from watchlist: remove row immediately
+                row.remove();
+                const tableBody = document.getElementById("instruments-table-body");
+                if (tableBody && tableBody.children.length === 0) {
+                    tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary); padding: 24px;">No instruments in watchlist. Search above to add.</td></tr>`;
                 }
-                favBtn.setAttribute('onclick', `handleToggleFavorite('${symbol}', '${exchange}', ${newStatus})`);
+            } else {
+                const favBtn = row.querySelector('.btn-fav');
+                if (favBtn) {
+                    favBtn.textContent = '★ Favorite';
+                    favBtn.classList.add('active');
+                    favBtn.setAttribute('onclick', `handleToggleFavorite('${symbol}', '${exchange}', ${newStatus})`);
+                }
             }
         }
     } catch (err) {
@@ -202,8 +269,6 @@ async function handleToggleFavorite(symbol, exchange, currentStatus) {
         alert(`Error: ${err.message}`);
     }
 }
-
-
 
 /**
  * Handles deletion of an instrument.
@@ -217,8 +282,16 @@ async function handleDeleteInstrument(symbol, exchange) {
         const result = await deleteInstrument(symbol, exchange);
         alert(result.message || `${symbol} deleted successfully.`);
         invalidateInstrumentsCache();
-        const searchInput = document.getElementById("search-instruments-input");
-        loadInstrumentsManagerTable(searchInput ? searchInput.value : "");
+        
+        // Row-level DOM update
+        const row = document.querySelector(`.instrument-row[data-symbol="${symbol}"][data-exchange="${exchange}"]`);
+        if (row) {
+            row.remove();
+            const tableBody = document.getElementById("instruments-table-body");
+            if (tableBody && tableBody.children.length === 0) {
+                tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary); padding: 24px;">No instruments in watchlist. Search above to add.</td></tr>`;
+            }
+        }
     } catch (err) {
         console.error(`Failed to delete ${symbol} (${exchange}):`, err);
         alert(`Error: ${err.message}`);
@@ -261,10 +334,9 @@ async function handleSyncInstruments() {
         statusMsg.style.color = "var(--accent-blue)";
         statusMsg.textContent = `Sync Complete!\nImported: ${result.imported}\nUpdated: ${result.updated}\nSkipped: ${result.skipped}`;
         
-        // Invalidate cache and reload current table state
+        // Full refresh on sync complete
         invalidateInstrumentsCache();
-        const searchInput = document.getElementById("search-instruments-input");
-        loadInstrumentsManagerTable(searchInput ? searchInput.value : "");
+        loadInstrumentsManagerTable();
     } catch (err) {
         console.error("Instrument sync failed:", err);
         statusMsg.style.color = "var(--color-negative)";
@@ -292,7 +364,11 @@ async function handleClearAllInstruments() {
         const result = await clearAllInstruments();
         alert(result.message || "All instruments cleared.");
         invalidateInstrumentsCache();
-        loadInstrumentsManagerTable();
+        
+        const tableBody = document.getElementById("instruments-table-body");
+        if (tableBody) {
+            tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary); padding: 24px;">No instruments in watchlist. Search above to add.</td></tr>`;
+        }
     } catch (err) {
         console.error("Failed to clear all instruments:", err);
         alert(`Error: ${err.message}`);
@@ -306,14 +382,40 @@ async function handleClearAllInstruments() {
 
 document.addEventListener('DOMContentLoaded', () => {
     const searchInput = document.getElementById("search-instruments-input");
-    if (searchInput) {
+    const dropdown = document.getElementById("search-results-dropdown");
+
+    if (searchInput && dropdown) {
         let searchDebounceTimer = null;
         searchInput.addEventListener("input", (e) => {
             clearTimeout(searchDebounceTimer);
-            const query = e.target.value;
-            searchDebounceTimer = setTimeout(() => {
-                loadInstrumentsManagerTable(query);
+            const query = e.target.value.trim();
+            if (!query) {
+                dropdown.innerHTML = "";
+                dropdown.style.display = "none";
+                return;
+            }
+            searchDebounceTimer = setTimeout(async () => {
+                try {
+                    const results = await searchInstruments(query);
+                    renderSearchDropdown(results);
+                } catch (err) {
+                    console.error("Search failed:", err);
+                }
             }, 300);
+        });
+
+        // Hide dropdown when clicking outside
+        document.addEventListener("click", (e) => {
+            if (!searchInput.contains(e.target) && !dropdown.contains(e.target)) {
+                dropdown.style.display = "none";
+            }
+        });
+
+        // Show dropdown on focus if it has content
+        searchInput.addEventListener("focus", () => {
+            if (dropdown.children.length > 0) {
+                dropdown.style.display = "block";
+            }
         });
     }
 });

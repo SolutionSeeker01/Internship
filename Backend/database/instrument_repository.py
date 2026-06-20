@@ -135,6 +135,27 @@ def search_instruments(query: str, limit: int = 20) -> list:
 
 
 
+def get_instrument_by_symbol(symbol: str) -> dict:
+    """
+    Retrieves a single instrument by symbol only.
+    """
+    session = SessionLocal()
+    try:
+        res = session.execute(text("""
+            SELECT id, symbol, token, exchange, name, segment, broker, active, is_favorite, instrument_category
+            FROM instruments
+            WHERE UPPER(symbol) = :symbol;
+        """), {"symbol": symbol.upper().strip()})
+        row = res.fetchone()
+        if row:
+            return dict(row._mapping)
+        return None
+    except Exception as e:
+        logger.error(f"Error fetching instrument by symbol {symbol}: {e}")
+        return None
+    finally:
+        session.close()
+
 def create_instrument(symbol: str, token: int, exchange: str, name: str, segment: str, broker: str, instrument_category: str = "STOCK") -> bool:
     """
     Creates a new instrument.
@@ -280,6 +301,12 @@ def upsert_instruments_bulk(instruments_list: list) -> dict:
 
             is_default = symbol in DEFAULT_SYMBOLS
             active_val = True if is_default else False
+
+            # Delete any conflicting instrument with the same symbol but a different exchange
+            session.execute(
+                text("DELETE FROM instruments WHERE UPPER(symbol) = :symbol AND UPPER(exchange) != :exchange;"),
+                {"symbol": symbol, "exchange": exchange}
+            )
 
             session.execute(
                 text(f"""

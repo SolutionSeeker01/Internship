@@ -11,6 +11,7 @@ let chart;
 /** @type {any} */
 let candleSeries;
 let selectedSymbol = "RELIANCE";
+let selectedExchange = "NSE";
 let selectedInterval = "minute";
 let currentCandles = [];
 let lastCumulativeVolume = null;
@@ -131,13 +132,21 @@ function initializeChart() {
     });
 }
 
-async function loadCandles(symbol, interval = selectedInterval) {
+async function loadCandles(symbol, exchange = null, interval = selectedInterval) {
     if (!symbol) {
         clearChart();
         return;
     }
     selectedSymbol = symbol;
     selectedInterval = interval;
+    if (exchange) {
+        selectedExchange = exchange;
+    } else {
+        const el = document.querySelector(`[data-symbol="${symbol}"]`);
+        if (el) {
+            selectedExchange = el.getAttribute("data-exchange") || "NSE";
+        }
+    }
     lastCumulativeVolume = null; // Reset volume accumulator for the new symbol
 
     // Hide any existing chart message overlay at start
@@ -159,7 +168,7 @@ async function loadCandles(symbol, interval = selectedInterval) {
     const label = intervalLabels[interval] || "1 Minute";
     const titleEl = getEl("chart-title");
     if (titleEl) {
-        titleEl.textContent = `${symbol} - ${label} Candles`;
+        titleEl.textContent = `${symbol} | ${selectedExchange} - ${label} Candles`;
     }
 
     // Update timeframe buttons active state to match
@@ -193,7 +202,7 @@ async function loadCandles(symbol, interval = selectedInterval) {
     });
 
     try {
-        const data = await getCandles(symbol, interval, 100);
+        const data = await getCandles(symbol, interval, 100, selectedExchange);
         
         // Map, sort, and deduplicate data to prevent Lightweight Charts sorting crashes
         const seenTimes = new Set();
@@ -339,6 +348,7 @@ function showChartError() {
 
 function clearChart() {
     selectedSymbol = "";
+    selectedExchange = "";
     if (candleSeries) {
         candleSeries.setData([]);
     }

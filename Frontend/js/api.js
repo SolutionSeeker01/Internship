@@ -12,8 +12,11 @@
  * @param {number} limit - Maximum number of candles.
  * @returns {Promise<Array>} Promise resolving to candle list.
  */
-async function getCandles(symbol, interval, limit = 100) {
-    const url = `http://127.0.0.1:8000/candles/${symbol}?interval=${interval}&limit=${limit}`;
+async function getCandles(symbol, interval, limit = 100, exchange = null) {
+    let url = `http://127.0.0.1:8000/candles/${symbol}?interval=${interval}&limit=${limit}`;
+    if (exchange) {
+        url += `&exchange=${exchange}`;
+    }
     const response = await fetch(url, { cache: 'no-store' });
     if (!response.ok) {
         throw new Error(`Failed to fetch candles: ${response.status}`);

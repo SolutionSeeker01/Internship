@@ -187,8 +187,9 @@
 
             <!-- Right Side: Existing Instruments Table -->
             <div style="display: flex; flex-direction: column; gap: 14px; min-width: 0;">
-                <div class="search-container">
+                <div class="search-container" style="position: relative;">
                     <input type="text" id="search-instruments-input" placeholder="Search instruments..." style="width: 100%; max-width: 400px; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-md); font-size: 14px; color: var(--text-primary); background-color: #ffffff;" />
+                    <div id="search-results-dropdown" style="display: none; position: absolute; top: 100%; left: 0; width: 100%; max-width: 400px; background: #ffffff; border: 1px solid var(--border-color); border-radius: var(--radius-md); box-shadow: 0 4px 6px rgba(0,0,0,0.1); z-index: 1000; max-height: 300px; overflow-y: auto; margin-top: 4px;"></div>
                 </div>
                 <section class="table-responsive" style="margin-top: 0; max-height: calc(100vh - 250px);" aria-label="Existing Instruments Table">
                     <table class="stocks-table">

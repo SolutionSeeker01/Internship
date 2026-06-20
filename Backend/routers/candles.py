@@ -25,6 +25,7 @@ VALID_INTERVALS = {
 @router.get("/{symbol}")
 def get_historical_candles(
     symbol: str,
+    exchange: str = Query(default=None),
     interval: str = Query(default="minute"),
     limit: int = 100
 ):
@@ -33,13 +34,15 @@ def get_historical_candles(
     
     Args:
         symbol (str): The trading asset symbol (e.g. RELIANCE, NIFTY50).
+        exchange (str): The exchange metadata (e.g. NSE, BSE).
         interval (str): Time interval (minute, 3minute, 5minute, 10minute, 15minute, 30minute, 60minute, day).
         limit (int): Number of candles to return. Defaults to 100.
         
     Returns:
         List[Dict[str, Any]]: A chronological list of candles matching V1 JSON structure.
     """
-    symbol_upper = symbol.upper()
+    symbol_upper = symbol.upper().strip()
+    exch_upper = exchange.upper().strip() if exchange else None
 
     # 1. Validate interval parameter
     if interval not in VALID_INTERVALS:
@@ -58,7 +61,12 @@ def get_historical_candles(
     # 3. Resolve symbol to numerical instrument token using subscriptions cache
     try:
         active_instruments = get_all_instruments()
-        meta = next((inst for inst in active_instruments if inst["symbol"].upper() == symbol_upper), None)
+        meta = None
+        for inst in active_instruments:
+            if inst["symbol"].upper() == symbol_upper:
+                if exch_upper is None or inst["exchange"].upper() == exch_upper:
+                    meta = inst
+                    break
         if not meta:
             raise HTTPException(
                 status_code=404,
@@ -74,8 +82,14 @@ def get_historical_candles(
             detail="Failed to resolve symbol metadata."
         )
 
-    # Log query target
-    logger.info(f"Fetching historical candles: {symbol_upper} interval={interval}")
+    # Log query target in the specified formatted layout
+    resolved_exchange = meta["exchange"] if meta else (exchange or "NSE")
+    logger.info(
+        f"Loading candles:\n"
+        f"    Symbol   = {symbol_upper}\n"
+        f"    Exchange = {resolved_exchange}\n"
+        f"    Interval = {interval}"
+    )
 
     # 4. Determine lookback periods for from_date/to_date boundaries
     to_date = datetime.now()

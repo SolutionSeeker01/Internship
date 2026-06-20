@@ -16,7 +16,8 @@ from database.instrument_repository import (
     upsert_instruments_bulk as db_upsert_bulk,
     delete_all_instruments as db_delete_all,
     get_favorites_count as db_get_favorites_count,
-    get_instrument_by_symbol_exchange as db_get_instrument
+    get_instrument_by_symbol_exchange as db_get_instrument,
+    get_instrument_by_symbol as db_get_instrument_by_symbol
 )
 from market_data.subscriptions import reload_instruments
 from market_data.connection import get_kite
@@ -120,19 +121,6 @@ def add_instrument(payload: InstrumentCreate):
     """
     logger.info(f"POST /instruments: {payload.symbol} ({payload.instrument_category})")
 
-    # 1. Duplicate Check
-    dup = db_check_duplicate(payload.symbol, payload.exchange, payload.token)
-    if dup.get("symbol_exists"):
-        raise HTTPException(
-            status_code=400,
-            detail="Instrument with this symbol already exists in database on this exchange."
-        )
-    if dup.get("token_exists"):
-        raise HTTPException(
-            status_code=400,
-            detail="Instrument with this token already exists in database."
-        )
-
     # Get authorized KiteConnect instance
     try:
         kite = get_kite()
@@ -143,7 +131,7 @@ def add_instrument(payload: InstrumentCreate):
             detail="Unable to validate instrument at this time."
         )
 
-    # 2. Metadata Validation (with caching)
+    # STEP 1 - INSTRUMENT CORRECTNESS VALIDATION
     exchange_upper = payload.exchange.upper().strip()
     today = date.today()
     
@@ -172,7 +160,7 @@ def add_instrument(payload: InstrumentCreate):
     if not matched_record:
         raise HTTPException(
             status_code=400,
-            detail="Symbol, token, exchange, or name does not match Zerodha records."
+            detail="Instrument details do not match broker metadata. Please verify symbol, token, exchange, and segment."
         )
 
     # Strict check: exchange and tradingsymbol must match Zerodha record exactly
@@ -180,17 +168,29 @@ def add_instrument(payload: InstrumentCreate):
        str(matched_record.get("tradingsymbol") or "").upper() != payload.symbol.upper():
         raise HTTPException(
             status_code=400,
-            detail="Symbol, token, exchange, or name does not match Zerodha records."
+            detail="Instrument details do not match broker metadata. Please verify symbol, token, exchange, and segment."
+        )
+
+    # Segment and Category check
+    auth_segment = str(matched_record.get("segment") or "").strip()
+    auth_type = str(matched_record.get("instrument_type") or "").strip()
+    derived_segment, derived_category = normalize_segment_and_category(auth_segment, auth_type)
+    
+    payload_segment, payload_category = normalize_segment_and_category(payload.segment, payload.instrument_category)
+    if derived_segment != payload_segment or derived_category != payload_category:
+        raise HTTPException(
+            status_code=400,
+            detail="Instrument details do not match broker metadata. Please verify symbol, token, exchange, and segment."
         )
 
     # Loose check: instrument name comparison (normalized whitespace/casing/trimming)
     if normalize_string(payload.name) != normalize_string(str(matched_record.get("name") or "")):
         raise HTTPException(
             status_code=400,
-            detail="Symbol, token, exchange, or name does not match Zerodha records."
+            detail="Instrument details do not match broker metadata. Please verify symbol, token, exchange, and segment."
         )
 
-    # 3. Live Market Validation using authoritative fields from matched record
+    # Live Market Validation using authoritative fields from matched record
     auth_exchange = matched_record.get("exchange")
     auth_symbol = matched_record.get("tradingsymbol")
     query_symbol = f"{auth_exchange}:{auth_symbol}"
@@ -218,13 +218,23 @@ def add_instrument(payload: InstrumentCreate):
             detail="Instrument exists but live market data could not be verified."
         )
 
-    # 4. Insert into database using Zerodha master record fields as the source of truth,
-    # but run them through the centralized normalization.
-    auth_segment = str(matched_record.get("segment") or payload.segment).strip()
-    auth_type = str(matched_record.get("instrument_type") or payload.instrument_category).strip()
+    # STEP 2 - SYMBOL UNIQUENESS VALIDATION
+    existing_inst = db_get_instrument_by_symbol(payload.symbol)
+    if existing_inst:
+        existing_exchange = existing_inst.get("exchange") or "NSE"
+        raise HTTPException(
+            status_code=400,
+            detail=f"{payload.symbol} already exists on exchange {existing_exchange}. Remove the existing instrument before adding another exchange version."
+        )
     
-    derived_segment, derived_category = normalize_segment_and_category(auth_segment, auth_type)
+    dup = db_check_duplicate(payload.symbol, payload.exchange, payload.token)
+    if dup.get("token_exists"):
+        raise HTTPException(
+            status_code=400,
+            detail="Instrument with this token already exists in database."
+        )
 
+    # STEP 3 - INSERT
     success = db_create(
         symbol=str(matched_record.get("tradingsymbol") or payload.symbol).upper().strip(),
         token=int(matched_record.get("instrument_token") or payload.token),

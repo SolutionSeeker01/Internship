@@ -25,7 +25,10 @@ let reconnectTimer = null;
  * @param {Record<string, object>} data  – object keyed by symbol name
  */
 function handleSnapshot(data) {
-    for (const [symbol, marketData] of Object.entries(data)) {
+    for (const [token, marketData] of Object.entries(data)) {
+        const symbol = marketData.symbol;
+        if (!symbol) continue;
+        
         latestMarketData.set(symbol, marketData);
         if (document.getElementById(`index-card-${symbol}`)) {
             updateIndexCard(symbol, marketData);
