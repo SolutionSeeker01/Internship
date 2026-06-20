@@ -290,6 +290,9 @@ def upsert_instruments_bulk(instruments_list: list) -> dict:
 
         symbols_list_str = ", ".join(f"'{s}'" for s in DEFAULT_SYMBOLS)
 
+        delete_params = []
+        insert_params = []
+
         for inst in instruments_list:
             symbol = inst["symbol"].upper().strip()
             exchange = inst["exchange"].upper().strip()
@@ -302,12 +305,72 @@ def upsert_instruments_bulk(instruments_list: list) -> dict:
             is_default = symbol in DEFAULT_SYMBOLS
             active_val = True if is_default else False
 
-            # Delete any conflicting instrument with the same symbol but a different exchange
-            session.execute(
-                text("DELETE FROM instruments WHERE UPPER(symbol) = :symbol AND UPPER(exchange) != :exchange;"),
-                {"symbol": symbol, "exchange": exchange}
-            )
+            delete_params.append({"symbol": symbol, "exchange": exchange})
+            insert_params.append({
+                "symbol": symbol,
+                "token": token,
+                "exchange": exchange,
+                "name": name,
+                "segment": segment,
+                "broker": broker,
+                "category": category,
+                "active_val": active_val
+            })
 
+            if (symbol, exchange) in existing_set:
+                updated += 1
+            else:
+                imported += 1
+                existing_set.add((symbol, exchange))
+
+        if delete_params:
+            # Group import mapping to find conflicts where a symbol exists on a different exchange
+            # Delete in a single bulk query to avoid O(N) sequential scans on the PostgreSQL table
+            # Since symbols can be duplicated across exchanges in the import list itself,
+            # we group them to make sure we don't have multiple entries.
+            # Only DELETE instruments whose UPPER(symbol) is in our imported set, but whose UPPER(exchange) matches the conflicting one.
+            # We can select the symbols and their target exchanges.
+            # To do this safely and in a single query:
+            # DELETE FROM instruments WHERE UPPER(symbol) = :symbol AND UPPER(exchange) != :exchange
+            # can be grouped.
+            symbol_to_exchange = {}
+            for param in delete_params:
+                symbol_to_exchange[param["symbol"]] = param["exchange"]
+
+            # We can divide the symbols into chunks of 1000 and run the delete
+            # or do a batch delete. We have list of tuples: (symbol, exchange).
+            # To delete efficiently, we can use a query with a composite check or batching:
+            # WHERE (UPPER(symbol) = 'SYM1' AND UPPER(exchange) != 'EX1') OR ...
+            # Better yet, since we have the symbols, we can fetch existing rows with these symbols:
+            # SELECT symbol, exchange FROM instruments WHERE UPPER(symbol) IN (:symbols)
+            # and delete the ones that don't match our new exchange.
+            symbols_to_check = list(symbol_to_exchange.keys())
+            
+            # Batch the conflict check in chunks of 5000 symbols to avoid query parameter limits
+            chunk_size = 5000
+            conflicting_ids = []
+            for i in range(0, len(symbols_to_check), chunk_size):
+                chunk = symbols_to_check[i:i+chunk_size]
+                res = session.execute(
+                    text("SELECT id, symbol, exchange FROM instruments WHERE UPPER(symbol) IN :symbols;"),
+                    {"symbols": tuple(chunk)}
+                )
+                for row in res.fetchall():
+                    row_id = row._mapping["id"]
+                    sym = row._mapping["symbol"].upper()
+                    exch = row._mapping["exchange"].upper()
+                    if symbol_to_exchange.get(sym) != exch:
+                        conflicting_ids.append(row_id)
+            
+            if conflicting_ids:
+                # Delete conflicting records by ID (indexed primary key scan, extremely fast)
+                for i in range(0, len(conflicting_ids), chunk_size):
+                    session.execute(
+                        text("DELETE FROM instruments WHERE id IN :ids;"),
+                        {"ids": tuple(conflicting_ids[i:i+chunk_size])}
+                    )
+
+        if insert_params:
             session.execute(
                 text(f"""
                     INSERT INTO instruments (symbol, token, exchange, name, segment, broker, active, is_favorite, instrument_category)
@@ -321,22 +384,8 @@ def upsert_instruments_bulk(instruments_list: list) -> dict:
                         instrument_category = EXCLUDED.instrument_category,
                         updated_at = CURRENT_TIMESTAMP;
                 """),
-                {
-                    "symbol": symbol,
-                    "token": token,
-                    "exchange": exchange,
-                    "name": name,
-                    "segment": segment,
-                    "broker": broker,
-                    "category": category,
-                    "active_val": active_val
-                }
+                insert_params
             )
-            if (symbol, exchange) in existing_set:
-                updated += 1
-            else:
-                imported += 1
-                existing_set.add((symbol, exchange))
         session.commit()
     except Exception as e:
         session.rollback()

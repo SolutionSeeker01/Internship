@@ -44,6 +44,8 @@ def save_signal(
     timeframe: str,
     timestamp: int,
     status: str = "PENDING",
+    validation_status: str = "VALIDATED",
+    validation_reason: str = None,
     **kwargs
 ) -> bool:
     """
@@ -64,7 +66,10 @@ def save_signal(
                     stoploss,
                     timeframe,
                     signal_timestamp,
-                    status
+                    status,
+                    validation_status,
+                    validation_reason,
+                    validated_at
                 )
                 VALUES (
                     :action,
@@ -73,7 +78,10 @@ def save_signal(
                     :sl,
                     :timeframe,
                     :timestamp,
-                    :status
+                    :status,
+                    :validation_status,
+                    :validation_reason,
+                    CURRENT_TIMESTAMP
                 );
             """),
             {
@@ -83,11 +91,13 @@ def save_signal(
                 "sl": sl,
                 "timeframe": timeframe,
                 "timestamp": timestamp,
-                "status": status
+                "status": status,
+                "validation_status": validation_status,
+                "validation_reason": validation_reason
             }
         )
         session.commit()
-        logger.info(f"Signal persisted successfully: {action} {symbol} @ {entry} Status={status}")
+        logger.info(f"Signal persisted successfully: {action} {symbol} @ {entry} Status={status} ValStatus={validation_status}")
         return True
     except Exception as e:
         session.rollback()

@@ -429,8 +429,6 @@ def sync_instruments(payload: SyncRequest):
 
     for inst in master_list:
         mapped = map_zerodha_instrument(inst)
-        if mapped["exchange"] != "NSE":
-            continue
         if mapped["exchange"] in exchanges_set and mapped["segment"] in segments_set:
             filtered_instruments.append(mapped)
 
@@ -445,6 +443,14 @@ def sync_instruments(payload: SyncRequest):
             reload_instruments()
             from market_data.kite_client import update_subscriptions
             update_subscriptions()
+
+            # Rebuild and persist universe cache with the synced symbols (exchange-aware mapping)
+            try:
+                from market_data.universe import save_universe_cache
+                synced_mapping = {inst["symbol"]: inst["exchange"] for inst in filtered_instruments}
+                save_universe_cache(synced_mapping)
+            except Exception as ce:
+                logger.error(f"Failed to update UNIVERSE_CACHE during sync: {ce}")
         except Exception as e:
             logger.error(f"Database error during bulk upsert or subscription update: {e}")
             raise HTTPException(

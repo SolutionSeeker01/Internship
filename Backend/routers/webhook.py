@@ -34,12 +34,7 @@ async def webhook_ingest(payload: WebhookSignalRequest) -> dict:
         )
 
     # 2. Run business rules validator
-    if not validate_signal(payload):
-        logger.warning(f"Rejected signal ingestion due to validation failures on symbol: {payload.symbol}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Bad Request: Signal failed business rule validations."
-        )
+    val_status, val_reason = validate_signal(payload)
 
     # 3. Save the validated signal to the repository
     success = save_signal(
@@ -48,7 +43,10 @@ async def webhook_ingest(payload: WebhookSignalRequest) -> dict:
         entry=payload.entry,
         sl=payload.sl,
         timeframe=payload.tf,
-        timestamp=payload.ts
+        timestamp=payload.ts,
+        status="PENDING",
+        validation_status=val_status,
+        validation_reason=val_reason
     )
 
     if not success:

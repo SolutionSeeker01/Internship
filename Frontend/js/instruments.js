@@ -306,9 +306,6 @@ async function handleSyncInstruments() {
     const statusMsg = document.getElementById("sync-status-msg");
     if (!btn || !statusMsg) return;
 
-    // Collect Exchanges - NSE-only branch requirement
-    const exchanges = ["NSE"];
-
     // Collect Segments
     const segments = [];
     if (document.getElementById("sync-seg-eq")?.checked) segments.push("EQ");
@@ -316,6 +313,15 @@ async function handleSyncInstruments() {
     if (document.getElementById("sync-seg-etf")?.checked) segments.push("ETF");
     if (document.getElementById("sync-seg-fut")?.checked) segments.push("FUT");
     if (document.getElementById("sync-seg-opt")?.checked) segments.push("OPT");
+
+    // Collect Exchanges based on segments selected
+    const exchanges = [];
+    if (segments.includes("EQ") || segments.includes("IND") || segments.includes("ETF")) {
+        exchanges.push("NSE");
+    }
+    if (segments.includes("FUT") || segments.includes("OPT")) {
+        exchanges.push("NFO");
+    }
 
     if (exchanges.length === 0 || segments.length === 0) {
         alert("Please select at least one exchange and one segment to sync.");

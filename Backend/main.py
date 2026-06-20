@@ -48,6 +48,13 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to load active instruments at startup: {e}")
         raise
 
+    # Load universe cache
+    try:
+        from market_data.universe import load_universe_cache
+        load_universe_cache()
+    except Exception as e:
+        logger.error(f"Failed to load UNIVERSE_CACHE at startup: {e}")
+
     # Initialize and start the background Zerodha KiteTicker service
     try:
         import asyncio
