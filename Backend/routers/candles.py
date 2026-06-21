@@ -95,7 +95,7 @@ def get_historical_candles(
     to_date = datetime.now()
     if interval == "minute":
         # Safe lookback to handle weekends and after-hours data
-        from_date = to_date - timedelta(days=2)
+        from_date = to_date - timedelta(days=7)
     elif interval == "3minute":
         from_date = to_date - timedelta(days=3)
     elif interval == "5minute":

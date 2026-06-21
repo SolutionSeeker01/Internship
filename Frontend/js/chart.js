@@ -80,8 +80,10 @@ function initializeChart() {
         localization: {
             timeFormatter: (timestamp) => {
                 const date = new Date(timestamp * 1000);
-                return date.toLocaleTimeString('en-US', {
+                return date.toLocaleString('en-US', {
                     timeZone: 'Asia/Kolkata',
+                    month: 'short',
+                    day: 'numeric',
                     hour: '2-digit',
                     minute: '2-digit',
                     hour12: false
@@ -102,11 +104,11 @@ function initializeChart() {
                 } else if (tickMarkType === 1) { // Month
                     options.month = 'short';
                     return date.toLocaleDateString('en-US', options);
-                } else if (tickMarkType === 2) { // DayOfMonth
+                } else if (tickMarkType === 2) { // DayOfMonth / Day Change
                     options.day = 'numeric';
                     options.month = 'short';
                     return date.toLocaleDateString('en-US', options);
-                } else { // Time or TimeWithSeconds
+                } else { // Intraday ticks - show clean HH:MM on the axis
                     options.hour = '2-digit';
                     options.minute = '2-digit';
                     options.hour12 = false;
