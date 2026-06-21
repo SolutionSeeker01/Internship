@@ -60,9 +60,17 @@ def get_symbol_exchange(symbol: str) -> str:
     """
     Gets the exchange for a given symbol from the universe cache.
     Defaults to 'NSE' if the symbol is not in the cache.
+    If the cache is empty or the symbol is missing, returns 'NFO' for FUT, CE, PE suffixes.
     """
     sym_upper = symbol.upper().strip()
-    return _UNIVERSE_CACHE.get(sym_upper, "NSE")
+    if sym_upper in _UNIVERSE_CACHE:
+        return _UNIVERSE_CACHE[sym_upper]
+    
+    # Suffix fallback routing
+    if sym_upper.endswith("FUT") or sym_upper.endswith("CE") or sym_upper.endswith("PE"):
+        return "NFO"
+        
+    return "NSE"
 
 def is_symbol_in_universe(symbol: str) -> bool:
     """
