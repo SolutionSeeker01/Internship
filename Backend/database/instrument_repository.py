@@ -337,30 +337,28 @@ def upsert_instruments_bulk(instruments_list: list) -> dict:
             for param in delete_params:
                 symbol_to_exchange[param["symbol"]] = param["exchange"]
 
-            # We can divide the symbols into chunks of 1000 and run the delete
-            # or do a batch delete. We have list of tuples: (symbol, exchange).
-            # To delete efficiently, we can use a query with a composite check or batching:
-            # WHERE (UPPER(symbol) = 'SYM1' AND UPPER(exchange) != 'EX1') OR ...
-            # Better yet, since we have the symbols, we can fetch existing rows with these symbols:
-            # SELECT symbol, exchange FROM instruments WHERE UPPER(symbol) IN (:symbols)
-            # and delete the ones that don't match our new exchange.
             symbols_to_check = list(symbol_to_exchange.keys())
             
             # Batch the conflict check in chunks of 5000 symbols to avoid query parameter limits
             chunk_size = 5000
             conflicting_ids = []
+            conflicting_prefs = {}  # symbol -> (is_favorite, active)
             for i in range(0, len(symbols_to_check), chunk_size):
                 chunk = symbols_to_check[i:i+chunk_size]
                 res = session.execute(
-                    text("SELECT id, symbol, exchange FROM instruments WHERE UPPER(symbol) IN :symbols;"),
+                    text("SELECT id, symbol, exchange, is_favorite, active FROM instruments WHERE UPPER(symbol) IN :symbols;"),
                     {"symbols": tuple(chunk)}
                 )
                 for row in res.fetchall():
                     row_id = row._mapping["id"]
                     sym = row._mapping["symbol"].upper()
                     exch = row._mapping["exchange"].upper()
+                    is_fav = bool(row._mapping["is_favorite"])
+                    is_act = bool(row._mapping["active"])
                     if symbol_to_exchange.get(sym) != exch:
                         conflicting_ids.append(row_id)
+                        # Keep track of the user preferences for this symbol
+                        conflicting_prefs[sym] = (is_fav, is_act)
             
             if conflicting_ids:
                 # Delete conflicting records by ID (indexed primary key scan, extremely fast)
@@ -370,11 +368,22 @@ def upsert_instruments_bulk(instruments_list: list) -> dict:
                         {"ids": tuple(conflicting_ids[i:i+chunk_size])}
                     )
 
+        # Update insert_params to inherit preferences from deleted conflicting instruments
+        for param in insert_params:
+            sym = param["symbol"]
+            if sym in conflicting_prefs:
+                is_fav, is_act = conflicting_prefs[sym]
+                # Inherit the favorite and active state from the replaced exchange version
+                param["active_val"] = is_act or param["active_val"]
+                param["is_fav_val"] = is_fav
+            else:
+                param["is_fav_val"] = False
+
         if insert_params:
             session.execute(
                 text(f"""
                     INSERT INTO instruments (symbol, token, exchange, name, segment, broker, active, is_favorite, instrument_category)
-                    VALUES (:symbol, :token, :exchange, :name, :segment, :broker, :active_val, FALSE, :category)
+                    VALUES (:symbol, :token, :exchange, :name, :segment, :broker, :active_val, :is_fav_val, :category)
                     ON CONFLICT (symbol, exchange) DO UPDATE SET
                         token = EXCLUDED.token,
                         name = EXCLUDED.name,
