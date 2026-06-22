@@ -66,8 +66,11 @@ def get_symbol_exchange(symbol: str) -> str:
     if sym_upper in _UNIVERSE_CACHE:
         return _UNIVERSE_CACHE[sym_upper]
     
-    # Suffix fallback routing
-    if sym_upper.endswith("FUT") or sym_upper.endswith("CE") or sym_upper.endswith("PE"):
+    # Suffix fallback routing using regex to check for derivative patterns.
+    # Futures: ends with FUT, typically preceded by year/month info (e.g. NIFTY26JUNFUT)
+    # Options: ends with CE/PE preceded by numbers (strike price, e.g. NIFTY26500CE, RELIANCE1500CE)
+    import re
+    if re.search(r'\d+[A-Z]*FUT$', sym_upper) or re.search(r'\d+[A-Z]*[CP]E$', sym_upper):
         return "NFO"
         
     return "NSE"
