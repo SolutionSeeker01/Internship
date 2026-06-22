@@ -7,3 +7,6 @@ __pycache__/
 # Virtual environments (if you use one later)
 venv/
 .env/
+
+# Local cache files
+Backend/universe_cache.json
