@@ -2,6 +2,13 @@ from contextlib import asynccontextmanager
 from typing import Dict
 from fastapi import FastAPI
 
+# Initialize environment variables from .env file at absolute startup
+import os
+from dotenv import load_dotenv
+# Look for .env first in parent directory (workspace root) then locally in Backend/
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
+load_dotenv()
+
 # Initialize centralized logging before importing local modules that define their own loggers
 from utils.logger import get_logger, setup_logging
 setup_logging()
