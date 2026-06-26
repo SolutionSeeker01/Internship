@@ -76,6 +76,29 @@ async def bootstrap(current_user: User = Depends(get_current_user)):
         IST = ZoneInfo("Asia/Kolkata")
         today_ist = datetime.now(IST).date()
         if account.access_token and account.last_login_trading_day == today_ist:
+            # If the background market service has stopped (e.g. backend restarted), auto-start it
+            if not is_market_service_running():
+                try:
+                    api_key = decrypt_value(account.api_key)
+                    access_token = decrypt_value(account.access_token)
+                except Exception:
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail="Failed to process broker credentials"
+                    )
+
+                try:
+                    loop = asyncio.get_running_loop()
+                    start_market_data_service(
+                        loop,
+                        api_key,
+                        access_token
+                    )
+                except Exception:
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail="Failed to start market data service"
+                    )
             return BootstrapResponse(state=BootstrapState.FULLY_READY)
 
         # Step 5: Otherwise, OAuth login is required
