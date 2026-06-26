@@ -1,16 +1,14 @@
-from security.jwt_handler import (
-    create_access_token,
-    decode_access_token
+from security.encryption import (
+    encrypt_value,
+    decrypt_value
 )
 
-token = create_access_token(
-    user_id=1,
-    username="admin",
-    role="MASTER"
-)
+secret = "my_api_secret"
 
-print(token)
+encrypted = encrypt_value(secret)
 
-payload = decode_access_token(token)
+print(encrypted)
 
-print(payload)
+decrypted = decrypt_value(encrypted)
+
+print(decrypted)

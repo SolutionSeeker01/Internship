@@ -15,7 +15,7 @@ class BrokerAccount(Base):
     is_connected = Column(Boolean, default=False, nullable=False)
     zerodha_user_name = Column(String(100), nullable=True)
     oauth_state = Column(String(255), nullable=True)
-    oauth_state_created_at = Column(DateTime, nullable=True)
+    oauth_state_created_at = Column(DateTime(timezone=True), nullable=True)
     
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
