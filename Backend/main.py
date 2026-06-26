@@ -63,21 +63,16 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Failed to load UNIVERSE_CACHE at startup: {e}")
 
-    # Initialize and start the background Zerodha KiteTicker service
-    try:
-        import asyncio
-        loop = asyncio.get_running_loop()
-        start_market_data_service(loop)
-        logger.info("Market data service spawned successfully in background thread.")
-    except Exception:
-        logger.exception(
-            "Failed to start market data service."
-        )
-        raise
-
+    # Market data service is now dynamically started upon successful broker callback verification.
     yield  # Hand over control to run the FastAPI server
 
     # Clean up operations go here (e.g. closing websocket threads/clients if needed)
+    try:
+        from market_data.kite_client import stop_market_data_service
+        logger.info("Stopping market data service during application shutdown")
+        stop_market_data_service()
+    except Exception as shutdown_err:
+        logger.error(f"Error stopping market data service during shutdown: {shutdown_err}")
     logger.info("Shutting down FastAPI application lifespan context...")
 
 

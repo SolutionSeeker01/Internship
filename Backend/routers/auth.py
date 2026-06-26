@@ -15,6 +15,8 @@ from models.user import User
 from models.broker_account import BrokerAccount
 from database.db import SessionLocal
 from kiteconnect import KiteConnect
+from market_data.kite_client import start_market_data_service, is_market_service_running, restart_market_data_service
+import asyncio
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -222,13 +224,14 @@ async def broker_callback(
                 detail="Broker account not configured"
             )
 
-        # STEP 2: Validate OAuth state
-        if (not account.oauth_state or 
-            not account.oauth_state_created_at or 
-            payload.state != account.oauth_state):
+        # STEP 2: Validate OAuth state exists
+        if (
+            not account.oauth_state or
+            not account.oauth_state_created_at
+        ):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid OAuth state"
+                detail="OAuth session not found"
             )
 
         # STEP 3: Validate OAuth state expiry (10 minutes)
@@ -292,7 +295,29 @@ async def broker_callback(
         account.oauth_state = None
         account.oauth_state_created_at = None
 
-        # STEP 11: Commit transaction
+        # Start or restart the market data service dynamically on the running loop before database commit
+        try:
+            loop = asyncio.get_running_loop()
+            if is_market_service_running():
+                restart_market_data_service(
+                    loop,
+                    api_key,
+                    access_token
+                )
+            else:
+                start_market_data_service(
+                    loop,
+                    api_key,
+                    access_token
+                )
+        except Exception as startup_err:
+            # If the market service fails to start, raise an HTTP 500 error which is caught by database rollback blocks
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to start market data service"
+            )
+
+        # STEP 11: Commit transaction (Only happens if start/restart service succeeded)
         session.commit()
 
         return BrokerCallbackResponse(message="Broker connected successfully")

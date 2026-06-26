@@ -1,8 +1,30 @@
+// Initialize event listeners on page load
+document.addEventListener('DOMContentLoaded', () => {
+    const loginForm = document.getElementById('login-form');
+    if (loginForm) {
+        loginForm.addEventListener('submit', handleLogin);
+    }
+
+    const togglePasswordBtn = document.getElementById('btn-toggle-password');
+    if (togglePasswordBtn) {
+        togglePasswordBtn.addEventListener('click', togglePasswordVisibility);
+    }
+
+    const forgotPasswordLink = document.querySelector('.forgot-password');
+    if (forgotPasswordLink) {
+        forgotPasswordLink.addEventListener('click', (event) => {
+            event.preventDefault();
+            alert('Please contact your administrator to reset your password.');
+        });
+    }
+});
+
 // Password Visibility Toggle
 function togglePasswordVisibility(e) {
     e.preventDefault();
     const passwordInput = document.getElementById('password');
     const eyeIcon = document.getElementById('eye-icon');
+    if (!passwordInput || !eyeIcon) return;
     
     if (passwordInput.type === 'password') {
         passwordInput.type = 'text';

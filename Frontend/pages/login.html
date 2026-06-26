@@ -187,7 +187,7 @@
             </div>
 
             <!-- Login Form -->
-            <form id="login-form" onsubmit="handleLogin(event)">
+            <form id="login-form">
                 <!-- Username -->
                 <div class="form-group">
                     <label class="form-label" for="username">Username</label>
@@ -213,7 +213,7 @@
                             </svg>
                         </span>
                         <input class="form-input" type="password" id="password" placeholder="Enter your password" required autocomplete="current-password">
-                        <button class="input-icon-end" type="button" onclick="togglePasswordVisibility(event)">
+                        <button class="input-icon-end" type="button" id="btn-toggle-password">
                             <!-- Eye icon -->
                             <svg id="eye-icon" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
@@ -229,7 +229,7 @@
                         <input type="checkbox" id="remember-me">
                         Remember this device
                     </label>
-                    <a href="#" class="forgot-password" onclick="event.preventDefault(); alert('Please contact your administrator to reset your password.')">Forgot password?</a>
+                    <a href="#" class="forgot-password">Forgot password?</a>
                 </div>
 
                 <!-- Login Action Button -->

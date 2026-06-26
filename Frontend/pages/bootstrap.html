@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Initializing - Your Platform Name</title>
+    <!-- Google Fonts Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- External Stylesheet -->
+    <link rel="stylesheet" href="../css/pages/bootstrap.css">
+
+    <!-- Import JavaScript router file -->
+    <script src="../js/pages/bootstrap.js" defer></script>
+</head>
+<body>
+
+    <div class="bootstrap-card">
+        <!-- Logo Header -->
+        <div class="logo-section">
+            <div class="logo-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline>
+                    <polyline points="16 7 22 7 22 13"></polyline>
+                </svg>
+            </div>
+            <div class="logo-text">
+                <h2>Your Platform Name</h2>
+            </div>
+        </div>
+
+        <!-- Spinner -->
+        <div id="spinner" class="spinner"></div>
+
+        <!-- Loading Message -->
+        <div id="status-text" class="status-text">Initializing Application...</div>
+
+        <!-- Error Container -->
+        <div id="error-box" class="error-box"></div>
+
+        <!-- Action / Retry button -->
+        <button id="btn-retry" class="btn-retry">Retry</button>
+    </div>
+
+</body>
+</html>

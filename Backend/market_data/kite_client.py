@@ -4,11 +4,12 @@ from typing import Any, Dict, List, Optional
 from kiteconnect import KiteTicker
 
 # Import from local modules
-from market_data.connection import create_kws
+from market_data.connection import create_kws, create_kite_client, reset_connection_state
 from market_data.subscriptions import get_symbol, get_tokens, get_instrument_metadata
 from market_data.store import update_market_data
 from routers.websocket import broadcast_market_update
 from utils.logger import get_logger
+import threading
 
 # Set up logging
 logger = get_logger(__name__)
@@ -22,6 +23,13 @@ _tick_count: int = 0
 
 # Keep track of currently subscribed tokens
 _subscribed_tokens = set()
+
+# State variables for service controls
+_market_service_running: bool = False
+_market_service_lock = threading.RLock()
+
+# Track periodic logging task reference to prevent duplicate leak tasks
+_summary_task: Optional[asyncio.Task] = None
 
 
 async def _log_periodic_summary() -> None:
@@ -185,6 +193,7 @@ def on_ticks(ws: KiteTicker, ticks: List[Dict[str, Any]]) -> None:
 def on_error(ws: KiteTicker, code: int, reason: str) -> None:
     """
     Callback triggered when the KiteTicker connection encounters an error.
+    Handles running state reset on critical/permanent termination errors.
     """
     logger.error(f"KiteTicker connection error. Code: {code}, Reason: {reason}")
 
@@ -192,44 +201,142 @@ def on_error(ws: KiteTicker, code: int, reason: str) -> None:
 def on_close(ws: KiteTicker, code: int, reason: str) -> None:
     """
     Callback triggered when the KiteTicker connection is closed.
+    Acquires the lock and toggles running state flags to prevent stale state references
+    ONLY if the closing websocket matches the active instance.
+    Resets the centralized KiteConnect state.
     """
+    global _market_service_running, _kws, _summary_task
     logger.warning(f"KiteTicker connection closed. Code: {code}, Reason: {reason}")
+    with _market_service_lock:
+        if ws is _kws:
+            _market_service_running = False
+            _kws = None
+            
+            # Cancel periodic logging task if running to prevent memory leaks on unexpected disconnections
+            if _summary_task is not None:
+                if not _summary_task.done():
+                    _summary_task.cancel()
+                _summary_task = None
+
+            try:
+                reset_connection_state()
+            except Exception:
+                logger.exception(
+                    "Failed to reset centralized KiteConnect state during websocket shutdown."
+                )
+        else:
+            logger.info("Ignoring websocket close event from stale KiteTicker instance.")
 
 
-def start_market_data_service(loop: asyncio.AbstractEventLoop) -> None:
+def is_market_service_running() -> bool:
     """
-    Starts the background KiteTicker service.
-    
-    Creates a new KiteTicker instance, registers callbacks, stores a reference to 
-    the main asyncio event loop, and starts the connection run loop in a background thread.
+    Returns current running state of the market data service.
     """
-    global _kws, _main_loop
-    logger.info("Starting market data service...")
+    global _market_service_running
+    with _market_service_lock:
+        return _market_service_running
+
+
+def start_market_data_service(loop: asyncio.AbstractEventLoop, api_key: str, access_token: str) -> None:
+    """
+    Starts the background KiteTicker service dynamically.
     
-    # Store the reference to the main thread's asyncio event loop for thread-safe cross-thread calls
-    _main_loop = loop
-    
-    # Schedule the periodic logging coroutine on the main loop
-    _main_loop.create_task(_log_periodic_summary())
-    
-    try:
-        # Create new KiteTicker using the validated connection settings
-        _kws = create_kws()
+    Creates a new KiteTicker instance using supplied credentials, registers callbacks, 
+    stores a reference to the main asyncio event loop, and starts the connection run loop 
+    in a background thread.
+    """
+    global _kws, _main_loop, _market_service_running, _subscribed_tokens, _summary_task
+    with _market_service_lock:
+        if _market_service_running:
+            logger.warning("Market data service is already running. Ignoring start request.")
+            return
+
+        logger.info("Starting market data service dynamically...")
         
-        # Register the local event callbacks
-        _kws.on_connect = on_connect
-        _kws.on_ticks = on_ticks
-        _kws.on_error = on_error
-        _kws.on_close = on_close
+        # Store the reference to the main thread's asyncio event loop for thread-safe cross-thread calls
+        _main_loop = loop
         
-        # Establish connection in a background thread to prevent blocking
-        # FastAPI's server startup and execution loop.
-        logger.info("Connecting to KiteTicker WebSocket...")
-        _kws.connect(threaded=True)
+        # Schedule the periodic logging coroutine on the main loop if not already running or done
+        if _summary_task is None or _summary_task.done():
+            _summary_task = _main_loop.create_task(_log_periodic_summary())
         
-    except Exception as e:
-        logger.critical(f"Critical error starting market data service: {e}", exc_info=True)
-        raise
+        try:
+            # Dynamically initialize centralized KiteConnect client first
+            create_kite_client(api_key, access_token)
+
+            # Create new KiteTicker using the supplied connection credentials
+            _kws = create_kws(api_key, access_token)
+            
+            # Register the local event callbacks
+            _kws.on_connect = on_connect
+            _kws.on_ticks = on_ticks
+            _kws.on_error = on_error
+            _kws.on_close = on_close
+            
+            # Establish connection in a background thread to prevent blocking
+            logger.info("Connecting to KiteTicker WebSocket...")
+            _kws.connect(threaded=True)
+            
+            _market_service_running = True
+            
+        except Exception as e:
+            logger.critical(f"Critical error starting market data service dynamically: {e}", exc_info=True)
+            # FIX 4: Reset all globals on startup failure
+            _market_service_running = False
+            _kws = None
+            _main_loop = None
+            _subscribed_tokens.clear()
+            if _summary_task is not None and not _summary_task.done():
+                _summary_task.cancel()
+            _summary_task = None
+            try:
+                reset_connection_state()
+            except Exception:
+                pass
+            raise
+
+
+def stop_market_data_service() -> None:
+    """
+    Stops the background KiteTicker service and resets connection structures.
+    """
+    global _kws, _subscribed_tokens, _market_service_running, _summary_task
+    with _market_service_lock:
+        if not _market_service_running:
+            logger.info("Market data service is not running. Ignoring stop request.")
+            return
+
+        logger.info("Stopping market data service...")
+        
+        try:
+            if _kws is not None:
+                _kws.close()
+        except Exception as e:
+            logger.error(f"Error closing KiteTicker websocket connection: {e}")
+            
+        _kws = None
+        _subscribed_tokens.clear()
+        
+        # Cancel periodic summary logging task if running to prevent memory leaks
+        if _summary_task is not None:
+            if not _summary_task.done():
+                _summary_task.cancel()
+            _summary_task = None
+        
+        # Clear the centralized KiteConnect instance
+        reset_connection_state()
+        
+        _market_service_running = False
+        logger.info("Market data service successfully stopped.")
+
+
+def restart_market_data_service(loop: asyncio.AbstractEventLoop, api_key: str, access_token: str) -> None:
+    """
+    Stops and restarts the background KiteTicker service dynamically.
+    """
+    with _market_service_lock:
+        stop_market_data_service()
+        start_market_data_service(loop, api_key, access_token)
 
 
 def update_subscriptions() -> None:
