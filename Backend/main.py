@@ -15,6 +15,7 @@ setup_logging()
 logger = get_logger(__name__)
 
 # Local imports
+import models  # Register ORM models for metadata relationships
 from routers.websocket import router as ws_router
 from routers.candles import router as candle_router
 from routers.webhook import router as webhook_router
@@ -99,12 +100,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from routers.auth import router as auth_router
+
 # Register the WebSocket route handler
 app.include_router(ws_router)
 app.include_router(candle_router)
 app.include_router(webhook_router)
 app.include_router(instruments_router)
 app.include_router(dashboard_router)
+app.include_router(auth_router)
 
 
 @app.get("/")
