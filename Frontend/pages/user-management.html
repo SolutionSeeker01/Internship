@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Management - Platform Administration</title>
+    <!-- External Stylesheet -->
+    <link rel="stylesheet" href="../css/pages/common.css">
+    <link rel="stylesheet" href="../css/pages/user-management.css">
+    
+    <!-- Import Controller JS -->
+    <script src="../js/pages/user-management.js" defer></script>
+</head>
+<body>
+    <header class="app-header">
+        <div class="header-container">
+            <div class="header-left">
+                <!-- SVG Icon mimicking TradingView/Zerodha style -->
+                <svg class="header-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="9" cy="7" r="4"></circle>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                </svg>
+                <h1>User Management</h1>
+                <nav class="header-nav">
+                    <button class="nav-btn" id="nav-btn-dashboard">Back to Dashboard</button>
+                </nav>
+            </div>
+            <div class="header-right">
+                <span id="header-clock" class="header-clock">--:--:-- --</span>
+                <button class="nav-btn" id="nav-btn-logout" style="margin-left: 12px; background-color: #fef2f2; color: #dc2626; border: 1px solid #fecaca;">Logout</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="management-container">
+        <!-- Notification Box -->
+        <div id="notification-box" class="notification-box" style="display: none;"></div>
+
+        <div class="management-grid">
+            <!-- Left Panel: Create User / Update User / Reset Password Form -->
+            <section class="form-section">
+                <h2 id="form-title">Create User</h2>
+                <form id="create-user-form" class="create-form">
+                    <div class="form-group" id="fullname-field-group">
+                        <label for="fullname">Full Name</label>
+                        <input type="text" id="fullname" placeholder="Enter Full Name" required>
+                    </div>
+                    <div class="form-group" id="username-field-group">
+                        <label for="username">Username</label>
+                        <input type="text" id="username" placeholder="Enter Username" required>
+                    </div>
+                    <div class="form-group" id="email-field-group">
+                        <label for="email">Email Address</label>
+                        <input type="email" id="email" placeholder="Enter Email Address" required>
+                    </div>
+                    <div id="password-fields-container">
+                        <div class="form-group" style="margin-bottom: 16px; position: relative;">
+                            <label for="password" id="lbl-password">Password</label>
+                            <div style="position: relative; display: flex; align-items: center;">
+                                <input type="password" id="password" placeholder="Enter Password" required style="width: 100%; padding-right: 40px;">
+                                <button type="button" id="btn-toggle-password" style="position: absolute; right: 8px; background: none; border: none; cursor: pointer; font-size: 14px; padding: 4px;">👁️</button>
+                            </div>
+                        </div>
+                        <div class="form-group" style="position: relative;">
+                            <label for="confirm-password">Confirm Password</label>
+                            <div style="position: relative; display: flex; align-items: center;">
+                                <input type="password" id="confirm-password" placeholder="Confirm Password" required style="width: 100%; padding-right: 40px;">
+                                <button type="button" id="btn-toggle-confirm-password" style="position: absolute; right: 8px; background: none; border: none; cursor: pointer; font-size: 14px; padding: 4px;">👁️</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group" id="role-field-group">
+                        <label for="role">Role</label>
+                        <select id="role" required>
+                            <option value="CLIENT">CLIENT</option>
+                            <option value="MASTER">MASTER</option>
+                        </select>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <button type="submit" id="btn-create-submit" class="btn-create-submit">Create User</button>
+                        <button type="button" id="btn-cancel-edit" class="btn-secondary" style="display: none;">Cancel</button>
+                    </div>
+                </form>
+            </section>
+
+            <!-- Right Panel: Users List Table -->
+            <section class="table-section">
+                <div class="table-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid var(--border-color);">
+                    <h2 style="margin-bottom: 0; padding-bottom: 0; border-bottom: none;">Users List</h2>
+                    <input type="text" id="search-users-input" placeholder="Search by name, username, email..." style="padding: 6px 12px; font-size: 13px; border: 1px solid var(--border-color); border-radius: 6px; outline: none; width: 250px;">
+                </div>
+                <div class="table-responsive">
+                    <table class="users-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Username</th>
+                                <th>Email</th>
+                                <th>Role</th>
+                                <th>Status</th>
+                                <th class="text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="users-table-body">
+                            <!-- Dynamic Content Loaded via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+    </main>
+</body>
+</html>

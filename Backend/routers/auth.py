@@ -303,12 +303,29 @@ async def broker_callback(
             )
             access_token = session_data["access_token"]
             user_name = session_data["user_name"]
+            broker_user_id = session_data.get("user_id")
         except Exception:
             # Zerodha authentication failure (HTTP 400)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Failed to authenticate broker"
             )
+
+        # Duplicate Zerodha Account Connection validation
+        if broker_user_id:
+            existing = session.query(BrokerAccount).filter(
+                BrokerAccount.broker_user_id == broker_user_id,
+                BrokerAccount.user_id != current_user.id
+            ).first()
+            if existing:
+                # Delete the entire failed BrokerAccount row for this user
+                session.delete(account)
+                session.commit()
+
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="This Zerodha account is already connected to another platform user. Please configure different broker credentials."
+                )
 
         # STEP 8: Encrypt access_token
         try:
@@ -325,6 +342,7 @@ async def broker_callback(
 
         account.access_token = encrypted_access_token
         account.zerodha_user_name = user_name
+        account.broker_user_id = broker_user_id
         account.is_connected = True
         account.last_login_trading_day = today_ist
         account.oauth_state = None

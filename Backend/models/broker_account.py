@@ -14,6 +14,7 @@ class BrokerAccount(Base):
     last_login_trading_day = Column(Date, nullable=True)
     is_connected = Column(Boolean, default=False, nullable=False)
     zerodha_user_name = Column(String(100), nullable=True)
+    broker_user_id = Column(String(50), nullable=True)
     oauth_state = Column(String(255), nullable=True)
     oauth_state_created_at = Column(DateTime(timezone=True), nullable=True)
     

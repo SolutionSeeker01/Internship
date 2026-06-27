@@ -96,6 +96,7 @@ app.add_middleware(
 )
 
 from routers.auth import router as auth_router
+from routers.user_management import router as user_management_router
 
 # Register the WebSocket route handler
 app.include_router(ws_router)
@@ -104,6 +105,7 @@ app.include_router(webhook_router)
 app.include_router(instruments_router)
 app.include_router(dashboard_router)
 app.include_router(auth_router)
+app.include_router(user_management_router)
 
 
 @app.get("/")
