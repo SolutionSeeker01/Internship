@@ -140,13 +140,25 @@ async def connect_broker(current_user: User = Depends(get_current_user)):
         account.oauth_state = oauth_state
         account.oauth_state_created_at = datetime.now(timezone.utc)
         
-        # Step 6: Construct the Zerodha login redirect URL
-        login_url = (
-            f"https://kite.zerodha.com/connect/login"
-            f"?api_key={api_key}"
-            f"&v=3"
-            f"&state={oauth_state}"
-        )
+        # Step 6: Construct the Zerodha login redirect URL with validation checks
+        try:
+            # Check for API key validity (Zerodha API keys must be non-empty alphanumeric strings, e.g., length between 10 and 64)
+            # Typically invalid API keys can be caught via regex or length validation.
+            # In local integration, we return a 400 Bad Request if the key is obviously malformed or invalid.
+            if not api_key.isalnum() or len(api_key) < 5:
+                raise ValueError("Invalid format")
+
+            login_url = (
+                f"https://kite.zerodha.com/connect/login"
+                f"?api_key={api_key}"
+                f"&v=3"
+                f"&state={oauth_state}"
+            )
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid API Key configured. Please update your broker credentials."
+            )
 
         session.commit()
 

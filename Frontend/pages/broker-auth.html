@@ -3,21 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Connecting Zerodha - Your Platform Name</title>
+    <title>Broker Authentication Required - Your Platform Name</title>
     <!-- Google Fonts Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     
     <!-- External Stylesheet -->
-    <link rel="stylesheet" href="../css/pages/broker-connect.css">
+    <link rel="stylesheet" href="../css/pages/broker-auth.css">
 
     <!-- Import JavaScript controller -->
-    <script src="../js/pages/broker-connect.js" defer></script>
+    <script src="../js/pages/broker-auth.js" defer></script>
 </head>
 <body>
 
-    <div class="connect-card">
+    <div class="auth-card">
         <!-- Logo Header -->
         <div class="logo-section">
             <div class="logo-icon">
@@ -32,27 +32,16 @@
         </div>
 
         <!-- Page Titles -->
-        <div class="connect-header">
-            <h2>Connecting Zerodha</h2>
-            <p>You are being securely redirected to Zerodha.</p>
+        <div class="auth-header">
+            <h2>Broker Authentication Required</h2>
+            <p>Your broker account needs authentication before you can continue.</p>
         </div>
 
-        <!-- Spinner -->
-        <div id="spinner" class="spinner"></div>
-
-        <!-- Loading / Status Message -->
-        <div id="status-text" class="status-text">Preparing secure connection...</div>
-
-        <!-- Error Container -->
-        <div id="error-box" class="error-box"></div>
-
-        <!-- Action / Retry button -->
-        <button id="btn-retry" class="btn-retry">Retry</button>
-
-        <!-- Recovery actions container -->
-        <div id="recovery-actions" class="recovery-actions" style="display: none;">
-            <button id="btn-setup" class="btn-primary">Update Credentials</button>
-            <button id="btn-auth" class="btn-secondary">Return to Broker Authentication</button>
+        <!-- Action Section -->
+        <div class="action-section">
+            <button id="btn-connect" class="btn-primary">Connect to Zerodha</button>
+            <button id="btn-setup" class="btn-secondary">Update Credentials</button>
+            <button id="btn-logout" class="btn-text">Logout</button>
         </div>
     </div>
 

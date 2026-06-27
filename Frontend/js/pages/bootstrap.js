@@ -57,7 +57,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (state === 'BROKER_SETUP_REQUIRED') {
                 window.location.replace('broker-setup.html');
             } else if (state === 'BROKER_AUTH_REQUIRED') {
-                window.location.replace('broker-connect.html');
+                window.location.replace('broker-auth.html');
             } else if (state === 'FULLY_READY') {
                 // Read stored user profile details to route by authorization role
                 const userString = localStorage.getItem('user');

@@ -6,12 +6,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     const spinner = document.getElementById('spinner');
     const errorBox = document.getElementById('error-box');
     const successBanner = document.getElementById('success-banner');
-    const loginBtn = document.getElementById('btn-login');
+    const retryBtn = document.getElementById('btn-retry');
+    const setupBtn = document.getElementById('btn-setup');
+    const recoveryActions = document.getElementById('recovery-actions');
 
-    // Bind return to login action listener programmatically
+    // Bind action listeners programmatically
     if (loginBtn) {
         loginBtn.addEventListener('click', () => {
             window.location.replace('login.html');
+        });
+    }
+
+    if (retryBtn) {
+        retryBtn.addEventListener('click', () => {
+            window.location.replace('broker-connect.html');
+        });
+    }
+
+    if (setupBtn) {
+        setupBtn.addEventListener('click', () => {
+            window.location.replace('broker-setup.html');
         });
     }
 
@@ -24,6 +38,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             errorBox.style.display = 'block';
         }
         if (loginBtn) loginBtn.style.display = 'inline-block';
+        if (recoveryActions) recoveryActions.style.display = 'flex';
     }
 
     // 2. Read access_token from localStorage

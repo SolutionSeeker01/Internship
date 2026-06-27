@@ -7,10 +7,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     const errorBox = document.getElementById('error-box');
     const retryBtn = document.getElementById('btn-retry');
 
+    const setupBtn = document.getElementById('btn-setup');
+    const authBtn = document.getElementById('btn-auth');
+    const recoveryActions = document.getElementById('recovery-actions');
+
     // Attach retry button listener programmatically
     if (retryBtn) {
         retryBtn.addEventListener('click', () => {
             window.location.reload();
+        });
+    }
+
+    if (setupBtn) {
+        setupBtn.addEventListener('click', () => {
+            window.location.replace('broker-setup.html');
+        });
+    }
+
+    if (authBtn) {
+        authBtn.addEventListener('click', () => {
+            window.location.replace('broker-auth.html');
         });
     }
 
@@ -21,7 +37,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             errorBox.textContent = message;
             errorBox.style.display = 'block';
         }
-        if (retryBtn) retryBtn.style.display = 'inline-block';
+        if (retryBtn) retryBtn.style.display = 'none'; // Hide default simple reload retry btn
+        if (recoveryActions) recoveryActions.style.display = 'flex';
     }
 
     // 1. Verify access_token exists in localStorage
@@ -58,11 +75,20 @@ document.addEventListener('DOMContentLoaded', async () => {
                 window.location.href = data.login_url;
                 return;
             } else {
-                throw new Error('Missing login URL in response');
+                showError('Failed to initiate broker connection: Missing login URL');
             }
         } else {
-            // Handle non-success response status
-            throw new Error(`HTTP Error Status: ${response.status}`);
+            // Handle non-success response status with custom error details
+            let detailMessage = 'Failed to initiate broker connection';
+            try {
+                const errorData = await response.json();
+                if (errorData && typeof errorData.detail === 'string' && errorData.detail.trim()) {
+                    detailMessage = errorData.detail;
+                }
+            } catch (e) {
+                // Ignore parsing exceptions
+            }
+            showError(detailMessage);
         }
     } catch (error) {
         // Network resilience check using instanceof TypeError
