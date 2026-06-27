@@ -65,7 +65,7 @@ function initializeChart() {
             background: { type: 'solid', color: '#ffffff' },
             backgroundColor: "#ffffff",
             textColor: "#111827",
-            fontFamily: "Inter, sans-serif",
+            fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
         },
         grid: {
             vertLines: { color: "#f3f4f6" },

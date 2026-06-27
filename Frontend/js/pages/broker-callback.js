@@ -9,6 +9,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const retryBtn = document.getElementById('btn-retry');
     const setupBtn = document.getElementById('btn-setup');
     const recoveryActions = document.getElementById('recovery-actions');
+    const loginBtn = document.getElementById('btn-login');
 
     // Bind action listeners programmatically
     if (loginBtn) {
