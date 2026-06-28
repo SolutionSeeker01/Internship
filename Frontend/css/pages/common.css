@@ -172,6 +172,41 @@ body {
 }
 
 /* =====================================================
+   HEADER NAVIGATION TABS
+   ===================================================== */
+.header-nav {
+    display: flex;
+    gap: 8px;
+    margin-left: 32px;
+}
+
+.nav-btn {
+    background: none;
+    border: none;
+    color: #9ca3af;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 14px;
+    border-radius: var(--radius-sm);
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.nav-btn:hover {
+    color: #ffffff;
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.nav-btn.active {
+    color: #ffffff !important;
+    background-color: var(--accent-blue) !important;
+}
+
+
+/* =====================================================
    MARKET BREADTH FOOTER
    ===================================================== */
 .app-footer {

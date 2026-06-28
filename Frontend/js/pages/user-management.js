@@ -27,38 +27,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
     }
 
-    // 2. Attach programmatic listener for Dashboard Navigation & Logout
-    if (btnDashboard) {
-        btnDashboard.addEventListener('click', () => {
-            window.location.replace('dashboard.html');
-        });
-    }
-
-    const btnLogout = document.getElementById('nav-btn-logout');
-    if (btnLogout) {
-        btnLogout.addEventListener('click', () => {
-            if (window.confirm('Are you sure you want to logout?')) {
-                localStorage.removeItem('access_token');
-                localStorage.removeItem('user');
-                window.location.replace('login.html');
-            }
-        });
-    }
-
-    // 3. Update Clock
-    function updateClock() {
-        if (!clockEl) return;
-        const now = new Date();
-        clockEl.textContent = now.toLocaleTimeString('en-US', {
-            hour12: true,
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit'
-        });
-    }
-    updateClock();
-    setInterval(updateClock, 1000);
-
     // 4. Utility function to render notifications
     function showNotification(message, type = 'success') {
         if (!notificationBox) return;

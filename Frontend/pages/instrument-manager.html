@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Instrument Manager - Market Platform</title>
+
+    <!-- Link external styling stylesheets -->
+    <link rel="stylesheet" href="../css/pages/common.css">
+    <link rel="stylesheet" href="../css/pages/instrument-manager.css">
+</head>
+<body>
+    <header class="app-header" id="header-section">
+        <div class="header-container">
+            <div class="header-left">
+                <!-- SVG Icon mimicking TradingView/Zerodha style -->
+                <svg class="header-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+                <h1>Market Dashboard</h1>
+                <nav class="header-nav">
+                    <button class="nav-btn" id="nav-btn-dashboard">Dashboard</button>
+                    <button class="nav-btn active" id="nav-btn-instruments">Instrument Manager</button>
+                    <button class="nav-btn" id="nav-btn-users" style="display: none;">User Management</button>
+                </nav>
+            </div>
+            <!-- Header info -->
+            <div class="header-right">
+                <span id="header-clock" class="header-clock">--:--:-- --</span>
+                <button class="theme-toggle" aria-label="Toggle Theme">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+                </button>
+                <button class="nav-btn" id="nav-btn-logout" style="margin-left: 12px; background-color: #fef2f2; color: #dc2626; border: 1px solid #fecaca;">Logout</button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Instrument Manager Section -->
+    <main class="instruments-layout" id="instruments-layout">
+        <div class="instruments-grid-container">
+            <!-- Left Side: Add Instrument Form and Instrument Sync -->
+            <div style="display: flex; flex-direction: column; gap: 16px;">
+                <section class="instrument-form-card" aria-label="Add Instrument Section">
+                    <h2 style="font-size: 14px; font-weight: 700; color: var(--text-primary); border-bottom: 1px solid var(--border-color); padding-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Add Instrument</h2>
+                    <form id="add-instrument-form" onsubmit="event.preventDefault(); handleAddInstrumentSubmit();" style="display: flex; flex-direction: column; gap: 14px;">
+                        <div class="form-group">
+                            <label for="form-symbol">Symbol</label>
+                            <input type="text" id="form-symbol" placeholder="e.g. RELIANCE" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="form-token">Token</label>
+                            <input type="number" id="form-token" placeholder="e.g. 738561" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="form-exchange">Exchange</label>
+                            <select id="form-exchange" required>
+                                <option value="NSE" selected>NSE</option>
+                                <option value="BSE">BSE</option>
+                                <option value="NFO">NFO</option>
+                                <option value="MCX">MCX</option>
+                                <option value="CDS">CDS</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="form-name">Name</label>
+                            <input type="text" id="form-name" placeholder="e.g. RELIANCE INDUSTRIES" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="form-segment">Segment</label>
+                            <select id="form-segment" required>
+                                <option value="EQ" selected>EQ (Equity)</option>
+                                <option value="IND">IND (Index)</option>
+                                <option value="ETF">ETF (ETF)</option>
+                                <option value="FUT">FUT (Futures)</option>
+                                <option value="OPT">OPT (Options)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="form-category">Category</label>
+                            <select id="form-category" required>
+                                <option value="STOCK" selected>STOCK</option>
+                                <option value="INDEX">INDEX</option>
+                                <option value="FUTURE">FUTURE</option>
+                                <option value="OPTION">OPTION</option>
+                                <option value="ETF">ETF</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="form-broker">Broker</label>
+                            <input type="text" id="form-broker" value="ZERODHA" placeholder="e.g. ZERODHA" required>
+                        </div>
+                        <button type="submit" class="btn-primary">Add Instrument</button>
+                    </form>
+                </section>
+
+                <section class="instrument-form-card" aria-label="Instrument Sync Section">
+                    <h2 style="font-size: 14px; font-weight: 700; color: var(--text-primary); border-bottom: 1px solid var(--border-color); padding-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Instrument Sync</h2>
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+
+                        <div>
+                            <label style="font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">Segments</label>
+                            <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px;">
+                                <label style="font-size: 13px; color: var(--text-primary); display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                                    <input type="checkbox" id="sync-seg-eq" value="EQ" checked> EQ
+                                </label>
+                                <label style="font-size: 13px; color: var(--text-primary); display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                                    <input type="checkbox" id="sync-seg-ind" value="IND" checked> IND
+                                </label>
+                                <label style="font-size: 13px; color: var(--text-primary); display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                                    <input type="checkbox" id="sync-seg-etf" value="ETF" checked> ETF
+                                </label>
+                                <label style="font-size: 13px; color: var(--text-primary); display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                                    <input type="checkbox" id="sync-seg-fut" value="FUT"> FUT
+                                </label>
+                                <label style="font-size: 13px; color: var(--text-primary); display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                                    <input type="checkbox" id="sync-seg-opt" value="OPT"> OPT
+                                </label>
+                            </div>
+                        </div>
+                        <button type="button" class="btn-primary" id="btn-sync-instruments" onclick="handleSyncInstruments()" style="margin-top: 6px;">Sync Instruments</button>
+                        <div id="sync-status-msg" style="font-size: 12px; color: var(--text-secondary); display: none; line-height: 1.4; margin-top: 4px; white-space: pre-line;"></div>
+                    </div>
+                </section>
+
+                <section class="instrument-form-card" aria-label="Danger Zone">
+                    <h2 style="font-size: 14px; font-weight: 700; color: var(--color-negative); border-bottom: 1px solid var(--border-color); padding-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Danger Zone</h2>
+                    <p style="font-size: 12px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 12px;">
+                        Permanently remove all instruments, favorites, and synced data from the database.
+                    </p>
+                    <button type="button" class="btn-primary" id="btn-clear-all-instruments" onclick="handleClearAllInstruments()" style="background: var(--color-negative); margin-top: 0;">Clear All Instruments</button>
+                </section>
+            </div>
+
+            <!-- Right Side: Existing Instruments Table -->
+            <div style="display: flex; flex-direction: column; gap: 14px; min-width: 0;">
+                <div class="search-container" style="position: relative;">
+                    <input type="text" id="search-instruments-input" placeholder="Search instruments..." style="width: 100%; max-width: 400px; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-md); font-size: 14px; color: var(--text-primary); background-color: #ffffff;" />
+                    <div id="search-results-dropdown" style="display: none; position: absolute; top: 100%; left: 0; width: 100%; max-width: 400px; background: #ffffff; border: 1px solid var(--border-color); border-radius: var(--radius-md); box-shadow: 0 4px 6px rgba(0,0,0,0.1); z-index: 1000; max-height: 300px; overflow-y: auto; margin-top: 4px;"></div>
+                </div>
+                <section class="table-responsive" style="margin-top: 0; max-height: calc(100vh - 250px);" aria-label="Existing Instruments Table">
+                    <table class="stocks-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Symbol</th>
+                            <th scope="col">Token</th>
+                            <th scope="col">Exchange</th>
+                            <th scope="col">Name</th>
+                            <th scope="col">Segment</th>
+                            <th scope="col">Broker</th>
+                            <th scope="col">Category</th>
+                            <th scope="col" class="text-right" style="padding-right: 24px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="instruments-table-body">
+                        <!-- Dynamically populated via JS -->
+                    </tbody>
+                </table>
+            </section>
+        </div>
+    </div>
+</main>
+
+    <footer class="app-footer">
+        <div class="footer-container">
+            <div class="market-breadth">
+                <span class="breadth-item advances">Advances: <span id="breadth-advances">0</span></span>
+                <span class="breadth-item declines">Declines: <span id="breadth-declines">0</span></span>
+                <span class="breadth-item unchanged">Unchanged: <span id="breadth-unchanged">0</span></span>
+            </div>
+            <div class="footer-right">
+                <span class="last-updated">Last updated: <span id="last-updated-time">--:--:-- --</span></span>
+                <span class="refresh-btn" onclick="location.reload();">↻</span>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Load application scripts -->
+    <script src="../js/api/api.js"></script>
+    <script src="../js/common.js"></script>
+    <script src="../js/pages/instrument-manager.js"></script>
+</body>
+</html>

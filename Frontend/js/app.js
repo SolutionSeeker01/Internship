@@ -25,42 +25,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    if (btnDashboard) {
-        btnDashboard.addEventListener("click", () => switchView("dashboard"));
-    }
-    if (btnInstruments) {
-        btnInstruments.addEventListener("click", () => switchView("instruments"));
-    }
-    if (btnUsers) {
-        btnUsers.addEventListener("click", () => {
-            window.location.replace("user-management.html");
-        });
-    }
 
-    const btnLogout = document.getElementById("nav-btn-logout");
-    if (btnLogout) {
-        btnLogout.addEventListener("click", () => {
-            if (window.confirm("Are you sure you want to logout?")) {
-                localStorage.removeItem("access_token");
-                localStorage.removeItem("user");
-                window.location.replace("login.html");
-            }
-        });
-    }
 
     // 2. Start WebSocket Connection
     try {
         connectWebSocket();
     } catch (e) {
         console.error("Failed to connect WebSocket:", e);
-    }
-    
-    // 3. Start Header Clock
-    try {
-        updateHeaderClock();
-        setInterval(updateHeaderClock, 1000);
-    } catch (e) {
-        console.error("Failed to start clock:", e);
     }
     
     // 4. Load Watchlist dynamically

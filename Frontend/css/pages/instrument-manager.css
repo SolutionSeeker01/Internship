@@ -1,0 +1,209 @@
+/* =====================================================
+   INSTRUMENTS MANAGER SPECIFIC STYLING
+   ===================================================== */
+
+.instruments-layout {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-lg);
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: var(--space-lg);
+}
+
+.instruments-grid-container {
+    display: grid;
+    grid-template-columns: 350px 1fr;
+    gap: var(--space-lg);
+    align-items: start;
+}
+
+@media (max-width: 1024px) {
+    .instruments-grid-container {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Form Styling */
+.instrument-form-card {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    box-shadow: var(--shadow-premium);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.form-group label {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.form-group input,
+.form-group select {
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    font-size: 14px;
+    font-family: inherit;
+    color: var(--text-primary);
+    background-color: #ffffff;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+    outline: none;
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.btn-primary {
+    background-color: var(--accent-blue);
+    color: #ffffff;
+    border: none;
+    border-radius: var(--radius-md);
+    padding: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+    text-align: center;
+}
+
+.btn-primary:hover {
+    background-color: #2563eb;
+}
+
+.btn-primary:active {
+    transform: scale(0.98);
+}
+
+/* Actions buttons styling */
+.action-btn-group {
+    display: flex;
+    gap: 6px;
+    justify-content: flex-end;
+}
+
+.btn-action {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background-color: #ffffff;
+}
+
+.btn-action.btn-fav {
+    color: var(--text-secondary);
+}
+
+.btn-action.btn-fav.active {
+    background-color: #fef9c3;
+    border-color: #fde047;
+    color: #ca8a04;
+}
+
+.btn-action.btn-delete {
+    color: #dc2626;
+    border-color: rgba(220, 38, 38, 0.2);
+}
+
+.btn-action.btn-delete:hover {
+    background-color: #fee2e2;
+}
+
+
+
+/* =====================================================
+   WATCHLIST STOCKS TABLE
+   ===================================================== */
+.table-responsive {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-premium);
+    overflow-x: auto;
+    overflow-y: auto;
+    max-height: calc(100vh - 280px);
+}
+
+.table-responsive::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.table-responsive::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.table-responsive::-webkit-scrollbar-thumb {
+    background-color: #d1d5db;
+    border-radius: 4px;
+}
+
+.stocks-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-variant-numeric: tabular-nums;
+}
+
+.stocks-table th {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background-color: #fafafa;
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border-color);
+    user-select: none;
+}
+
+.stocks-table th:first-child {
+    text-align: left;
+}
+
+.stocks-table tbody tr {
+    border-bottom: 1px solid var(--border-color);
+    background-color: #ffffff;
+    transition: background-color 0.2s ease;
+}
+
+.stocks-table tbody tr:nth-child(even) {
+    background-color: #fafafa;
+}
+
+.stocks-table tbody tr:last-child {
+    border-bottom: none;
+}
+
+.stocks-table tbody tr:hover {
+    background-color: var(--bg-table-hover);
+}
+
+.stocks-table td {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    padding: 14px 20px;
+    white-space: nowrap;
+}
+

@@ -9,26 +9,28 @@
     <link rel="stylesheet" href="../css/pages/user-management.css">
     
     <!-- Import Controller JS -->
+    <script src="../js/common.js" defer></script>
     <script src="../js/pages/user-management.js" defer></script>
 </head>
 <body>
-    <header class="app-header">
+    <header class="app-header" id="header-section">
         <div class="header-container">
             <div class="header-left">
                 <!-- SVG Icon mimicking TradingView/Zerodha style -->
-                <svg class="header-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                    <circle cx="9" cy="7" r="4"></circle>
-                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-                </svg>
-                <h1>User Management</h1>
+                <svg class="header-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+                <h1>Market Dashboard</h1>
                 <nav class="header-nav">
-                    <button class="nav-btn" id="nav-btn-dashboard">Back to Dashboard</button>
+                    <button class="nav-btn" id="nav-btn-dashboard">Dashboard</button>
+                    <button class="nav-btn" id="nav-btn-instruments">Instrument Manager</button>
+                    <button class="nav-btn active" id="nav-btn-users" style="display: none;">User Management</button>
                 </nav>
             </div>
+            <!-- Header info -->
             <div class="header-right">
                 <span id="header-clock" class="header-clock">--:--:-- --</span>
+                <button class="theme-toggle" aria-label="Toggle Theme">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+                </button>
                 <button class="nav-btn" id="nav-btn-logout" style="margin-left: 12px; background-color: #fef2f2; color: #dc2626; border: 1px solid #fecaca;">Logout</button>
             </div>
         </div>
