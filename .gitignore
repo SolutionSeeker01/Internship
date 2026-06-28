@@ -9,4 +9,4 @@ venv/
 .env/
 
 # Local cache files
-Backend/universe_cache.json
+universe_cache.json

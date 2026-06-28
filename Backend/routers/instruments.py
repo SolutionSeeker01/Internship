@@ -447,7 +447,12 @@ def sync_instruments(payload: SyncRequest):
             # Rebuild and persist universe cache with the synced symbols (exchange-aware mapping)
             try:
                 from market_data.universe import save_universe_cache
-                synced_mapping = {inst["symbol"]: inst["exchange"] for inst in filtered_instruments}
+                synced_mapping = {
+                    inst["symbol"]: {
+                        "exchange": inst["exchange"],
+                        "instrument_token": inst["token"]
+                    } for inst in filtered_instruments
+                }
                 save_universe_cache(synced_mapping)
             except Exception as ce:
                 logger.error(f"Failed to update UNIVERSE_CACHE during sync: {ce}")

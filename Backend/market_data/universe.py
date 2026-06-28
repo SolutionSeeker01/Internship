@@ -1,6 +1,6 @@
 import os
 import json
-from typing import Set, List
+from typing import Set, List, Optional
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -8,7 +8,8 @@ logger = get_logger(__name__)
 # Locate cache file in the Backend directory
 CACHE_FILE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "universe_cache.json")
 
-# Thread-safe in-memory cache for O(1) symbol -> exchange mapping
+# Thread-safe in-memory cache for O(1) symbol -> metadata mapping
+# Schema: { SYMBOL: { "exchange": str, "instrument_token": int } }
 _UNIVERSE_CACHE: dict = {}
 
 def load_universe_cache() -> None:
@@ -23,9 +24,28 @@ def load_universe_cache() -> None:
                 data = json.load(f)
                 if isinstance(data, list):
                     # Backward compatibility for old simple set list format
-                    _UNIVERSE_CACHE = {str(sym).upper().strip(): "NSE" for sym in data}
+                    _UNIVERSE_CACHE = {
+                        str(sym).upper().strip(): {
+                            "exchange": "NSE",
+                            "instrument_token": 0
+                        } for sym in data
+                    }
                 elif isinstance(data, dict):
-                    _UNIVERSE_CACHE = {str(k).upper().strip(): str(v).upper().strip() for k, v in data.items()}
+                    parsed_cache = {}
+                    for k, v in data.items():
+                        key = str(k).upper().strip()
+                        if isinstance(v, dict):
+                            parsed_cache[key] = {
+                                "exchange": str(v.get("exchange", "NSE")).upper().strip(),
+                                "instrument_token": int(v.get("instrument_token", 0))
+                            }
+                        else:
+                            # Backward compatibility for flat value: "SYMBOL": "EXCHANGE"
+                            parsed_cache[key] = {
+                                "exchange": str(v).upper().strip(),
+                                "instrument_token": 0
+                            }
+                    _UNIVERSE_CACHE = parsed_cache
                 else:
                     _UNIVERSE_CACHE = {}
             logger.info(f"Successfully loaded {len(_UNIVERSE_CACHE)} instruments into UNIVERSE_CACHE from file.")
@@ -39,14 +59,33 @@ def load_universe_cache() -> None:
 def save_universe_cache(symbols: List[str] | dict) -> None:
     """
     Persists the updated universe mapping to the JSON cache file and updates memory.
-    Supports list of symbols (default exchange NSE) or dict of symbol -> exchange.
+    Supports list of symbols or dict containing metadata payloads.
     """
     global _UNIVERSE_CACHE
     
+    clean_cache = {}
     if isinstance(symbols, dict):
-        clean_cache = {str(k).upper().strip(): str(v).upper().strip() for k, v in symbols.items() if k}
+        for k, v in symbols.items():
+            if not k:
+                continue
+            key = str(k).upper().strip()
+            if isinstance(v, dict):
+                clean_cache[key] = {
+                    "exchange": str(v.get("exchange", "NSE")).upper().strip(),
+                    "instrument_token": int(v.get("instrument_token", 0))
+                }
+            else:
+                clean_cache[key] = {
+                    "exchange": str(v).upper().strip(),
+                    "instrument_token": 0
+                }
     else:
-        clean_cache = {str(sym).upper().strip(): "NSE" for sym in symbols if sym}
+        clean_cache = {
+            str(sym).upper().strip(): {
+                "exchange": "NSE",
+                "instrument_token": 0
+            } for sym in symbols if sym
+        }
         
     try:
         with open(CACHE_FILE_PATH, "w") as f:
@@ -64,16 +103,25 @@ def get_symbol_exchange(symbol: str) -> str:
     """
     sym_upper = symbol.upper().strip()
     if sym_upper in _UNIVERSE_CACHE:
-        return _UNIVERSE_CACHE[sym_upper]
+        return _UNIVERSE_CACHE[sym_upper]["exchange"]
     
     # Suffix fallback routing using regex to check for derivative patterns.
-    # Futures: ends with FUT, typically preceded by year/month info (e.g. NIFTY26JUNFUT)
-    # Options: ends with CE/PE preceded by numbers (strike price, e.g. NIFTY26500CE, RELIANCE1500CE)
     import re
     if re.search(r'\d+[A-Z]*FUT$', sym_upper) or re.search(r'\d+[A-Z]*[CP]E$', sym_upper):
         return "NFO"
         
     return "NSE"
+
+def get_instrument_token(symbol: str) -> Optional[int]:
+    """
+    Retrieves the numerical broker instrument token from universe cache.
+    Returns None if cache is not populated or symbol is not found.
+    """
+    sym_upper = symbol.upper().strip()
+    if sym_upper in _UNIVERSE_CACHE:
+        token = _UNIVERSE_CACHE[sym_upper]["instrument_token"]
+        return token if token != 0 else None
+    return None
 
 def is_symbol_in_universe(symbol: str) -> bool:
     """
@@ -90,3 +138,9 @@ def is_universe_cache_empty() -> bool:
     """
     global _UNIVERSE_CACHE
     return len(_UNIVERSE_CACHE) == 0
+
+def symbol_exists(symbol: str) -> bool:
+    """
+    Checks if a symbol exists inside the cache registry.
+    """
+    return symbol.upper().strip() in _UNIVERSE_CACHE
