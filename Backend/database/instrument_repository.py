@@ -282,16 +282,46 @@ def upsert_instruments_bulk(instruments_list: list) -> dict:
     skipped = 0
     try:
         # Pre-query existing instruments' symbol+exchange pairs to determine imported vs updated
-        existing_res = session.execute(text("SELECT symbol, exchange FROM instruments;"))
-        existing_set = {
-            (row._mapping["symbol"].upper(), row._mapping["exchange"].upper())
-            for row in existing_res.fetchall()
-        }
+        # And load token to symbol+exchange map to handle token recycling conflicts
+        existing_res = session.execute(text("SELECT symbol, exchange, token FROM instruments;"))
+        existing_set = set()
+        existing_tokens = {} # token -> (symbol, exchange)
+        for row in existing_res.fetchall():
+            sym = row._mapping["symbol"].upper()
+            exch = row._mapping["exchange"].upper()
+            tok = int(row._mapping["token"])
+            existing_set.add((sym, exch))
+            existing_tokens[tok] = (sym, exch)
 
         symbols_list_str = ", ".join(f"'{s}'" for s in DEFAULT_SYMBOLS)
 
         delete_params = []
         insert_params = []
+
+        # Identify token recycling conflicts and delete stale rows before bulk inserts/updates
+        recycled_tokens_to_delete = []
+        for inst in instruments_list:
+            symbol = inst["symbol"].upper().strip()
+            exchange = inst["exchange"].upper().strip()
+            token = int(inst["token"])
+
+            if token in existing_tokens:
+                ex_sym, ex_exch = existing_tokens[token]
+                if ex_sym != symbol or ex_exch != exchange:
+                    recycled_tokens_to_delete.append(token)
+                    # Remove it from existing sets/maps so update counters stay accurate
+                    existing_set.discard((ex_sym, ex_exch))
+
+        if recycled_tokens_to_delete:
+            # Delete in chunks to avoid query parameter size constraints
+            chunk_size = 5000
+            for i in range(0, len(recycled_tokens_to_delete), chunk_size):
+                chunk = recycled_tokens_to_delete[i:i+chunk_size]
+                session.execute(
+                    text("DELETE FROM instruments WHERE token IN :tokens;"),
+                    {"tokens": tuple(chunk)}
+                )
+            logger.info(f"Purged {len(recycled_tokens_to_delete)} stale instruments due to Zerodha token recycling.")
 
         for inst in instruments_list:
             symbol = inst["symbol"].upper().strip()

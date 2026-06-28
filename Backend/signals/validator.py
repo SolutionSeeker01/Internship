@@ -10,7 +10,6 @@ from database.signal_repository import check_duplicate_signal
 logger = get_logger(__name__)
 
 # Configurable constants
-SL_MAX_DISTANCE_PCT = 0.20  # 20%
 MAX_LTP_DEVIATION_PCT = 10.0  # 10%
 
 
@@ -24,12 +23,10 @@ def validate_signal(signal: WebhookSignalRequest) -> tuple:
     1. Secret Validation (handled by Router)
     2. Payload Validation (handled by Pydantic)
     3. Timestamp Validation (expired or in future)
-    4. Trading Logic Validation (SL direction, max 20% distance)
+    4. Trading Logic Validation (SL direction)
     5. Universe Cache Validation (Symbol exists in universe)
     6. Market Price Validation (Price sanity deviation check, partial validation on timeout/outage)
     7. Duplicate Detection (no matching symbol+action+entry within 2 minutes)
-    8. Market Hours Validation (weekday check, 9:15-15:30 IST)
-    9. Save Signal (persisted with status and reason)
     """
     symbol = signal.symbol
     action = signal.action
@@ -73,15 +70,6 @@ def validate_signal(signal: WebhookSignalRequest) -> tuple:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid stoploss: Stoploss must be strictly above entry price for SELL."
             )
-            
-    # Stoploss distance check (max 20% of entry price)
-    sl_distance = abs(entry - sl) / entry
-    if sl_distance > SL_MAX_DISTANCE_PCT:
-        logger.warning("Rejected signal due to validation failure: INVALID_STOPLOSS")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid stoploss: Stoploss distance cannot exceed 20% of entry price."
-        )
 
     # --- Layer 5: Universe Cache Validation & Layer 6: Market Price Validation ---
     cache_empty = is_universe_cache_empty()
@@ -158,30 +146,6 @@ def validate_signal(signal: WebhookSignalRequest) -> tuple:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Duplicate signal detected"
         )
-
-    # --- Layer 8: Market Hours Validation ---
-    if os.getenv("DISABLE_MARKET_HOURS_CHECK", "false").lower() != "true":
-        ist_tz = timezone(timedelta(hours=5, minutes=30))
-        # Convert signal timestamp (ts) to IST datetime
-        signal_time_ist = datetime.fromtimestamp(ts / 1000.0, tz=ist_tz)
-        
-        # Check weekend
-        if signal_time_ist.weekday() in (5, 6):
-            logger.warning("Rejected signal due to validation failure: MARKET_CLOSED")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Market is closed on weekends"
-            )
-            
-        # Check trading hours (9:15 AM to 3:30 PM IST)
-        market_start = signal_time_ist.replace(hour=9, minute=15, second=0, microsecond=0)
-        market_end = signal_time_ist.replace(hour=15, minute=30, second=0, microsecond=0)
-        if not (market_start <= signal_time_ist <= market_end):
-            logger.warning("Rejected signal due to validation failure: MARKET_CLOSED")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Outside equity trading hours"
-            )
 
     logger.info(f"Signal {action} {symbol} successfully validated against business rules. Status={validation_status} Reason={validation_reason}")
     return validation_status, validation_reason
