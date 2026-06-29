@@ -140,12 +140,8 @@
                     <thead>
                         <tr>
                             <th scope="col">Symbol</th>
-                            <th scope="col">Token</th>
                             <th scope="col">Exchange</th>
                             <th scope="col">Name</th>
-                            <th scope="col">Segment</th>
-                            <th scope="col">Broker</th>
-                            <th scope="col">Category</th>
                             <th scope="col" class="text-right" style="padding-right: 24px;">Actions</th>
                         </tr>
                     </thead>
@@ -154,6 +150,7 @@
                     </tbody>
                 </table>
             </section>
+            <button id="btn-execute-bulk-delete" class="btn-primary" style="margin-top: 16px; background-color: var(--color-negative); width: 100%; display: none;" onclick="handleExecuteBulkDelete()">Delete Selected Instruments</button>
         </div>
     </div>
 </main>

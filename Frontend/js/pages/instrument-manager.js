@@ -6,42 +6,23 @@
 
 console.info("[Instrument Manager] Module loaded.");
 
-let cachedInstruments = null;
+// State array to manage selection targets for deletion
+let deleteQueue = [];
 
-function invalidateInstrumentsCache() {
-    cachedInstruments = null;
-    console.info("[Instruments] Cache invalidated.");
-}
-
-async function loadInstrumentsManagerTable() {
+function renderInstrumentsTable() {
     const tableBody = document.getElementById("instruments-table-body");
+    const bulkBtn = document.getElementById("btn-execute-bulk-delete");
     if (!tableBody) return;
 
-    try {
-        if (cachedInstruments !== null) {
-            renderInstrumentsTable(tableBody, cachedInstruments);
-            console.info("[Instruments] Using cached favorites.");
-        } else {
-            tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary); padding: 24px;">Loading watchlist...</td></tr>`;
-            const instruments = (await getFavoriteInstruments()).filter(inst => inst.is_favorite);
-            cachedInstruments = instruments;
-            console.info("[Instruments] Fetched and cached favorites.");
-            renderInstrumentsTable(tableBody, instruments);
-        }
-    } catch (err) {
-        console.error("Failed to load instruments table:", err);
-        tableBody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--color-negative); padding: 24px;">Error loading instruments: ${err.message}</td></tr>`;
-    }
-}
-
-function renderInstrumentsTable(tableBody, instruments) {
-    if (instruments.length === 0) {
-        tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary); padding: 24px;">No instruments in watchlist. Search above to add.</td></tr>`;
+    if (deleteQueue.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-secondary); padding: 24px;">No instruments selected for deletion. Search above to add instruments.</td></tr>`;
+        if (bulkBtn) bulkBtn.style.display = "none";
         return;
     }
 
+    if (bulkBtn) bulkBtn.style.display = "block";
     tableBody.innerHTML = "";
-    instruments.forEach(inst => {
+    deleteQueue.forEach((inst, index) => {
         const tr = document.createElement("tr");
         tr.className = "instrument-row";
         tr.setAttribute("data-symbol", inst.symbol);
@@ -49,25 +30,44 @@ function renderInstrumentsTable(tableBody, instruments) {
 
         tr.innerHTML = `
             <td class="font-medium">${inst.symbol}</td>
-            <td>${inst.token}</td>
             <td>${inst.exchange}</td>
             <td>${inst.name}</td>
-            <td>${inst.segment}</td>
-            <td>${inst.broker}</td>
-            <td>${inst.instrument_category || 'STOCK'}</td>
             <td class="text-right" style="padding-right: 24px;">
                 <div class="action-btn-group">
-                    <button class="btn-action btn-fav ${inst.is_favorite ? 'active' : ''}" onclick="handleToggleFavorite('${inst.symbol}', '${inst.exchange}', ${inst.is_favorite})">
-                        ${inst.is_favorite ? '★ Favorite' : '☆ Favorite'}
-                    </button>
-                    <button class="btn-action btn-delete" onclick="handleDeleteInstrument('${inst.symbol}', '${inst.exchange}')">
-                        Delete
+                    <button class="btn-action btn-delete" onclick="handleRemoveFromQueue(${index})">
+                        Remove
                     </button>
                 </div>
             </td>
         `;
         tableBody.appendChild(tr);
     });
+}
+
+function handleAddToQueue(symbol, exchange, name) {
+    const alreadyExists = deleteQueue.some(item => 
+        item.symbol.toUpperCase() === symbol.toUpperCase() && 
+        item.exchange.toUpperCase() === exchange.toUpperCase()
+    );
+
+    if (alreadyExists) {
+        alert(`${symbol} (${exchange}) is already present in the delete queue.`);
+        return;
+    }
+
+    deleteQueue.push({ symbol, exchange, name });
+    renderInstrumentsTable();
+
+    // Clear search dropdown input
+    const dropdown = document.getElementById("search-results-dropdown");
+    if (dropdown) dropdown.style.display = "none";
+    const searchInput = document.getElementById("search-instruments-input");
+    if (searchInput) searchInput.value = "";
+}
+
+function handleRemoveFromQueue(index) {
+    deleteQueue.splice(index, 1);
+    renderInstrumentsTable();
 }
 
 function renderSearchDropdown(results) {
@@ -96,39 +96,21 @@ function renderSearchDropdown(results) {
                 item.style.background = "#ffffff";
             });
             
-            const isFav = cachedInstruments ? cachedInstruments.some(c => c.symbol === inst.symbol && c.exchange === inst.exchange && c.is_favorite) : inst.is_favorite;
+            const isQueued = deleteQueue.some(c => c.symbol === inst.symbol && c.exchange === inst.exchange);
             
             item.innerHTML = `
                 <div style="display: flex; flex-direction: column; min-width: 0;">
                     <span style="font-weight: 600; font-size: 13px; color: var(--text-primary);">${inst.symbol} <span style="font-size: 10px; color: var(--text-secondary); background: var(--bg-card); padding: 2px 4px; border-radius: 4px; margin-left: 4px;">${inst.exchange}</span></span>
                     <span style="font-size: 11px; color: var(--text-secondary); text-overflow: ellipsis; white-space: nowrap; overflow: hidden; max-width: 250px;">${inst.name}</span>
                 </div>
-                <button class="btn-action btn-fav ${isFav ? 'active' : ''}" style="margin-left: auto; padding: 4px 8px; font-size: 11px; margin-top: 0; min-height: 28px;" onclick="event.stopPropagation(); handleSearchToggleFavorite('${inst.symbol}', '${inst.exchange}', ${isFav})">
-                    ${isFav ? '★ Favorite' : '☆ Add'}
+                <button class="btn-action btn-fav ${isQueued ? 'active' : ''}" style="margin-left: auto; padding: 4px 8px; font-size: 11px; margin-top: 0; min-height: 28px;" onclick="event.stopPropagation(); handleAddToQueue('${inst.symbol}', '${inst.exchange}', '${inst.name.replace(/'/g, "\\'")}')">
+                    ${isQueued ? 'Queued' : 'Add to Delete Queue'}
                 </button>
             `;
             dropdown.appendChild(item);
         });
     }
     dropdown.style.display = "block";
-}
-
-async function handleSearchToggleFavorite(symbol, exchange, currentStatus) {
-    const newStatus = !currentStatus;
-    try {
-        await toggleInstrumentFavorite(symbol, exchange, newStatus);
-        invalidateInstrumentsCache();
-        await loadInstrumentsManagerTable();
-        
-        const searchInput = document.getElementById("search-instruments-input");
-        if (searchInput) {
-            const results = await searchInstruments(searchInput.value.trim());
-            renderSearchDropdown(results);
-        }
-    } catch (err) {
-        console.error(`Failed to toggle favorite from search for ${symbol} (${exchange}):`, err);
-        alert(`Error: ${err.message}`);
-    }
 }
 
 async function handleAddInstrumentSubmit() {
@@ -152,7 +134,7 @@ async function handleAddInstrumentSubmit() {
 
     try {
         const result = await createInstrument(payload);
-        alert(result.message || "Instrument added successfully. Use search to find and add it to your watchlist.");
+        alert(result.message || "Instrument added successfully. Use search to find and add it to your delete queue.");
         
         symbolInput.value = "";
         tokenInput.value = "";
@@ -160,66 +142,36 @@ async function handleAddInstrumentSubmit() {
         exchangeInput.selectedIndex = 0;
         segmentInput.selectedIndex = 0;
         categoryInput.selectedIndex = 0;
-        
-        invalidateInstrumentsCache();
-        loadInstrumentsManagerTable();
     } catch (err) {
         console.error("Failed to add instrument:", err);
         alert(`Failed to add instrument: ${err.message}`);
     }
 }
 
-async function handleToggleFavorite(symbol, exchange, currentStatus) {
-    const newStatus = !currentStatus;
-
-    try {
-        await toggleInstrumentFavorite(symbol, exchange, newStatus);
-        invalidateInstrumentsCache();
-
-        const row = document.querySelector(`.instrument-row[data-symbol="${symbol}"][data-exchange="${exchange}"]`);
-        if (row) {
-            if (!newStatus) {
-                row.remove();
-                const tableBody = document.getElementById("instruments-table-body");
-                if (tableBody && tableBody.children.length === 0) {
-                    tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary); padding: 24px;">No instruments in watchlist. Search above to add.</td></tr>`;
-                }
-            } else {
-                const favBtn = row.querySelector('.btn-fav');
-                if (favBtn) {
-                    favBtn.textContent = '★ Favorite';
-                    favBtn.classList.add('active');
-                    favBtn.setAttribute('onclick', `handleToggleFavorite('${symbol}', '${exchange}', ${newStatus})`);
-                }
-            }
-        }
-    } catch (err) {
-        console.error(`Failed to toggle favorite for ${symbol} (${exchange}):`, err);
-        alert(`Error: ${err.message}`);
-    }
-}
-
-async function handleDeleteInstrument(symbol, exchange) {
-    if (!confirm(`Are you sure you want to delete the instrument: ${symbol} (${exchange})?`)) {
+async function handleExecuteBulkDelete() {
+    if (deleteQueue.length === 0) return;
+    if (!confirm(`Are you sure you want to delete the ${deleteQueue.length} selected instrument(s) from the catalog?`)) {
         return;
     }
 
+    const bulkBtn = document.getElementById("btn-execute-bulk-delete");
     try {
-        const result = await deleteInstrument(symbol, exchange);
-        alert(result.message || `${symbol} deleted successfully.`);
-        invalidateInstrumentsCache();
-        
-        const row = document.querySelector(`.instrument-row[data-symbol="${symbol}"][data-exchange="${exchange}"]`);
-        if (row) {
-            row.remove();
-            const tableBody = document.getElementById("instruments-table-body");
-            if (tableBody && tableBody.children.length === 0) {
-                tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary); padding: 24px;">No instruments in watchlist. Search above to add.</td></tr>`;
-            }
+        if (bulkBtn) {
+            bulkBtn.disabled = true;
+            bulkBtn.textContent = "Deleting...";
         }
+        const result = await bulkDeleteInstruments(deleteQueue);
+        alert(result.message || "Deletion completed successfully.");
+        deleteQueue = [];
+        renderInstrumentsTable();
     } catch (err) {
-        console.error(`Failed to delete ${symbol} (${exchange}):`, err);
-        alert(`Error: ${err.message}`);
+        console.error("Failed bulk deletion execution:", err);
+        alert(`Bulk deletion failed: ${err.message}`);
+    } finally {
+        if (bulkBtn) {
+            bulkBtn.disabled = false;
+            bulkBtn.textContent = "Delete Selected Instruments";
+        }
     }
 }
 
@@ -259,9 +211,6 @@ async function handleSyncInstruments() {
 
         statusMsg.style.color = "var(--accent-blue)";
         statusMsg.textContent = `Sync Complete!\nImported: ${result.imported}\nUpdated: ${result.updated}\nSkipped: ${result.skipped}`;
-        
-        invalidateInstrumentsCache();
-        loadInstrumentsManagerTable();
     } catch (err) {
         console.error("Instrument sync failed:", err);
         statusMsg.style.color = "var(--color-negative)";
@@ -285,12 +234,8 @@ async function handleClearAllInstruments() {
         }
         const result = await clearAllInstruments();
         alert(result.message || "All instruments cleared.");
-        invalidateInstrumentsCache();
-        
-        const tableBody = document.getElementById("instruments-table-body");
-        if (tableBody) {
-            tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary); padding: 24px;">No instruments in watchlist. Search above to add.</td></tr>`;
-        }
+        deleteQueue = [];
+        renderInstrumentsTable();
     } catch (err) {
         console.error("Failed to clear all instruments:", err);
         alert(`Error: ${err.message}`);
@@ -340,5 +285,5 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    loadInstrumentsManagerTable();
+    renderInstrumentsTable();
 });

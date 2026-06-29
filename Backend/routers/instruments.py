@@ -9,6 +9,7 @@ from database.instrument_repository import (
     get_all_instruments as db_get_all,
     create_instrument as db_create,
     delete_instrument as db_delete,
+    delete_instruments_bulk as db_delete_bulk,
     toggle_favorite as db_toggle_favorite,
     get_favorite_instruments as db_get_favorites,
     check_duplicate as db_check_duplicate,
@@ -22,6 +23,8 @@ from database.instrument_repository import (
 from market_data.subscriptions import reload_instruments
 from market_data.connection import get_kite
 from utils.logger import get_logger
+from schemas.instrument_delete import BulkDeleteRequest
+
 
 logger = get_logger(__name__)
 
@@ -304,6 +307,19 @@ def delete_instrument(symbol: str = Path(..., min_length=1), exchange: str = Non
         logger.warning(f"Failed to reload instrument cache or update subscriptions: {e}")
 
     return {"status": "success", "message": f"Instrument '{symbol_upper}' on exchange '{exchange_upper}' deleted successfully."}
+
+
+@router.post("/bulk-delete")
+def bulk_delete_instruments(payload: BulkDeleteRequest):
+    """
+    Bulk deletes selected instruments from the database catalog.
+    No subscription refresh or websocket update is performed as per architecture decision.
+    """
+    logger.info(f"POST /instruments/bulk-delete: processing {len(payload.instruments)} deletion targets.")
+    targets = [{"symbol": item.symbol, "exchange": item.exchange} for item in payload.instruments]
+    deleted_count = db_delete_bulk(targets)
+    return {"status": "success", "message": f"Successfully deleted {deleted_count} instruments from the catalog."}
+
 
 
 @router.patch("/{symbol}/favorite")

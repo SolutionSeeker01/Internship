@@ -172,3 +172,24 @@ async function clearAllInstruments() {
     }
     return await response.json();
 }
+
+/**
+ * Executes a POST request to bulk-delete a list of target instruments.
+ * @param {Array<{symbol: string, exchange: string}>} instruments
+ * @returns {Promise<object>}
+ */
+async function bulkDeleteInstruments(instruments) {
+    const response = await fetch("http://127.0.0.1:8000/instruments/bulk-delete", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ instruments })
+    });
+    if (!response.ok) {
+        const errorDetail = await response.json();
+        throw new Error(errorDetail.detail || `Failed to execute bulk deletion: ${response.status}`);
+    }
+    return await response.json();
+}
+

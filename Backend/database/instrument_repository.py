@@ -219,6 +219,33 @@ def delete_instrument(symbol: str, exchange: str) -> bool:
         session.close()
 
 
+def delete_instruments_bulk(targets: list) -> int:
+    """
+    Deletes multiple instruments from database atomically in a single transaction.
+    """
+    session = SessionLocal()
+    try:
+        deleted_count = 0
+        for target in targets:
+            symbol = target["symbol"].upper().strip()
+            exchange = target["exchange"].upper().strip()
+            result = session.execute(
+                text("DELETE FROM instruments WHERE UPPER(symbol) = :symbol AND UPPER(exchange) = :exchange;"),
+                {"symbol": symbol, "exchange": exchange}
+            )
+            deleted_count += result.rowcount
+        session.commit()
+        logger.info(f"Bulk deleted {deleted_count} instruments successfully.")
+        return deleted_count
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Failed bulk deletion transaction: {e}")
+        return 0
+    finally:
+        session.close()
+
+
+
 def toggle_favorite(symbol: str, exchange: str, is_favorite: bool) -> bool:
     """
     Updates the favorite status of an instrument.
