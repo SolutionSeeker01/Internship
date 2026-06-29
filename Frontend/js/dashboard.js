@@ -28,9 +28,12 @@ const currentChanges = new Map();
 const latestMarketData = new Map();
 
 // Local state for dashboard watchlist selection
+// Synchronously restore selectedWatchlistId from localStorage at script load time
+// to guarantee it is available before any async DOMContentLoaded handlers execute.
+const _savedWatchlistId = localStorage.getItem("dashboard_selected_watchlist_id");
 const state = {
     watchlists: [],
-    selectedWatchlistId: null
+    selectedWatchlistId: _savedWatchlistId ? parseInt(_savedWatchlistId, 10) : null
 };
 
 /* -------------------------------------------------------------
@@ -496,12 +499,56 @@ async function loadWatchlist() {
 /**
  * Initializes and populates the watchlist selector dropdown
  */
+/**
+ * Restores the selected watchlist state from localStorage and updates the dropdown selector.
+ */
+function restoreSelectedWatchlistState() {
+    const savedId = localStorage.getItem("dashboard_selected_watchlist_id");
+    const dropdown = document.getElementById("dashboard-watchlist-select");
+    
+    if (!savedId) {
+        state.selectedWatchlistId = null;
+        if (dropdown) {
+            dropdown.value = "";
+        }
+        return;
+    }
+
+    const parsedId = parseInt(savedId, 10);
+    if (state.watchlists && state.watchlists.length > 0) {
+        const exists = state.watchlists.some(w => w.id === parsedId);
+        if (exists) {
+            state.selectedWatchlistId = parsedId;
+            if (dropdown) {
+                dropdown.value = savedId;
+            }
+        } else {
+            localStorage.removeItem("dashboard_selected_watchlist_id");
+            state.selectedWatchlistId = null;
+            if (dropdown) {
+                dropdown.value = "";
+            }
+        }
+    } else {
+        state.selectedWatchlistId = parsedId;
+        if (dropdown) {
+            dropdown.value = savedId;
+        }
+    }
+}
+
+/**
+ * Initializes and populates the watchlist selector dropdown
+ */
 async function initializeWatchlistDropdown() {
     const dropdown = document.getElementById("dashboard-watchlist-select");
     if (!dropdown) return;
 
     try {
         state.watchlists = await getWatchlists();
+
+        // Clear dynamic options first (keep default market view option)
+        dropdown.innerHTML = '<option value="">Default Market View</option>';
 
         // Add options for each watchlist
         state.watchlists.forEach(w => {
@@ -511,38 +558,28 @@ async function initializeWatchlistDropdown() {
             dropdown.appendChild(opt);
         });
 
-        // Restore selected watchlist from localStorage
-        const savedId = localStorage.getItem("dashboard_selected_watchlist_id");
-        if (savedId) {
-            const parsedId = parseInt(savedId, 10);
-            const exists = state.watchlists.some(w => w.id === parsedId);
-            if (exists) {
-                state.selectedWatchlistId = parsedId;
-                dropdown.value = parsedId;
-            } else {
-                // Clear invalid selection
-                localStorage.removeItem("dashboard_selected_watchlist_id");
-                state.selectedWatchlistId = null;
-                dropdown.value = "";
-            }
-        }
+        // Restore state after watchlists options populate
+        restoreSelectedWatchlistState();
 
-        // Dropdown switch event listener
-        dropdown.addEventListener("change", async (e) => {
-            const val = e.target.value;
-            if (val) {
-                state.selectedWatchlistId = parseInt(val, 10);
-                localStorage.setItem("dashboard_selected_watchlist_id", val);
-            } else {
-                state.selectedWatchlistId = null;
-                localStorage.removeItem("dashboard_selected_watchlist_id");
-            }
-            await loadWatchlist();
-        });
+        // Dropdown switch event listener (bind once)
+        dropdown.removeEventListener("change", handleDropdownChange);
+        dropdown.addEventListener("change", handleDropdownChange);
 
     } catch (err) {
         console.error("Failed to load watchlists for dropdown:", err);
     }
+}
+
+async function handleDropdownChange(e) {
+    const val = e.target.value;
+    if (val) {
+        state.selectedWatchlistId = parseInt(val, 10);
+        localStorage.setItem("dashboard_selected_watchlist_id", val);
+    } else {
+        state.selectedWatchlistId = null;
+        localStorage.removeItem("dashboard_selected_watchlist_id");
+    }
+    await loadWatchlist();
 }
 
 /* -------------------------------------------------------------
@@ -550,10 +587,10 @@ async function initializeWatchlistDropdown() {
    ------------------------------------------------------------- */
 
 document.addEventListener('DOMContentLoaded', async () => {
-    // 1. Initial watchlist dropdown load
+    // 1. Initial watchlist dropdown load (fully populated and restored)
     await initializeWatchlistDropdown();
 
-    // 2. Load market instruments lists
+    // 2. Load market instruments lists (guaranteed to run with correct selectedWatchlistId)
     await loadWatchlist();
 
     // 3. Setup clock timer

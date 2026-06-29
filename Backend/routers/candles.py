@@ -60,9 +60,9 @@ def get_historical_candles(
 
     # 3. Resolve symbol to numerical instrument token using subscriptions cache
     try:
-        active_instruments = get_all_instruments()
+        instruments = get_all_instruments()
         meta = None
-        for inst in active_instruments:
+        for inst in instruments:
             if inst["symbol"].upper() == symbol_upper:
                 if exch_upper is None or inst["exchange"].upper() == exch_upper:
                     meta = inst
@@ -70,7 +70,7 @@ def get_historical_candles(
         if not meta:
             raise HTTPException(
                 status_code=404,
-                detail=f"Symbol '{symbol_upper}' not found in active instruments registry."
+                detail=f"Symbol '{symbol_upper}' not found in master catalog registry."
             )
         instrument_token = meta["token"]
     except HTTPException:

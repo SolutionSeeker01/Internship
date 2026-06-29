@@ -22,8 +22,6 @@ def init_db() -> None:
                 name VARCHAR(100),
                 segment VARCHAR(50),
                 broker VARCHAR(50),
-                active BOOLEAN NOT NULL DEFAULT TRUE,
-                is_favorite BOOLEAN NOT NULL DEFAULT FALSE,
                 instrument_category VARCHAR(20) NOT NULL DEFAULT 'STOCK',
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -61,7 +59,7 @@ def get_all_instruments() -> list:
     session = SessionLocal()
     try:
         result = session.execute(text("""
-            SELECT id, symbol, token, exchange, name, segment, broker, active, is_favorite, instrument_category, created_at, updated_at
+            SELECT id, symbol, token, exchange, name, segment, broker, instrument_category, created_at, updated_at
             FROM instruments
             ORDER BY symbol ASC;
         """))
@@ -89,7 +87,7 @@ def search_instruments(query: str, limit: int = 20) -> list:
         is_numeric = clean_query.isdigit()
         
         sql = """
-            SELECT id, symbol, token, exchange, name, segment, broker, active, is_favorite, instrument_category, created_at, updated_at
+            SELECT id, symbol, token, exchange, name, segment, broker, instrument_category, created_at, updated_at
             FROM instruments
             WHERE UPPER(symbol) LIKE :contains_query
                OR UPPER(name) LIKE :contains_query
@@ -133,8 +131,6 @@ def search_instruments(query: str, limit: int = 20) -> list:
     finally:
         session.close()
 
-
-
 def get_instrument_by_symbol(symbol: str) -> dict:
     """
     Retrieves a single instrument by symbol only.
@@ -142,7 +138,7 @@ def get_instrument_by_symbol(symbol: str) -> dict:
     session = SessionLocal()
     try:
         res = session.execute(text("""
-            SELECT id, symbol, token, exchange, name, segment, broker, active, is_favorite, instrument_category
+            SELECT id, symbol, token, exchange, name, segment, broker, instrument_category
             FROM instruments
             WHERE UPPER(symbol) = :symbol;
         """), {"symbol": symbol.upper().strip()})
@@ -164,8 +160,8 @@ def create_instrument(symbol: str, token: int, exchange: str, name: str, segment
     try:
         session.execute(
             text("""
-                INSERT INTO instruments (symbol, token, exchange, name, segment, broker, active, is_favorite, instrument_category)
-                VALUES (:symbol, :token, :exchange, :name, :segment, :broker, TRUE, FALSE, :instrument_category)
+                INSERT INTO instruments (symbol, token, exchange, name, segment, broker, instrument_category)
+                VALUES (:symbol, :token, :exchange, :name, :segment, :broker, :instrument_category)
                 ON CONFLICT (symbol, exchange) DO UPDATE SET
                     token = EXCLUDED.token,
                     name = EXCLUDED.name,
@@ -246,62 +242,12 @@ def delete_instruments_bulk(targets: list) -> int:
 
 
 
-def toggle_favorite(symbol: str, exchange: str, is_favorite: bool) -> bool:
-    """
-    Updates the favorite status of an instrument.
-    If favoriting, we also set active = TRUE.
-    If unfavoriting, active is set to FALSE, unless it is a permanent dashboard default instrument.
-    """
-    session = SessionLocal()
-    try:
-        sym_upper = symbol.upper().strip()
-        exch_upper = exchange.upper().strip()
-        
 
-
-        if is_favorite:
-            sql = """
-                UPDATE instruments
-                SET is_favorite = :is_favorite, active = TRUE, updated_at = CURRENT_TIMESTAMP
-                WHERE UPPER(symbol) = :symbol AND UPPER(exchange) = :exchange;
-            """
-        else:
-            if sym_upper in DEFAULT_SYMBOLS:
-                # Keep active = TRUE for defaults
-                sql = """
-                    UPDATE instruments
-                    SET is_favorite = :is_favorite, updated_at = CURRENT_TIMESTAMP
-                    WHERE UPPER(symbol) = :symbol AND UPPER(exchange) = :exchange;
-                """
-            else:
-                # Set active = FALSE for user-specific favorites
-                sql = """
-                    UPDATE instruments
-                    SET is_favorite = :is_favorite, active = FALSE, updated_at = CURRENT_TIMESTAMP
-                    WHERE UPPER(symbol) = :symbol AND UPPER(exchange) = :exchange;
-                """
-
-        result = session.execute(
-            text(sql),
-            {"symbol": sym_upper, "exchange": exch_upper, "is_favorite": is_favorite}
-        )
-        session.commit()
-        if result.rowcount > 0:
-            logger.info(f"Instrument '{symbol}' ({exchange}) favorite state set to {is_favorite}.")
-            return True
-        return False
-    except Exception as e:
-        session.rollback()
-        logger.error(f"Failed to update favorite state for {symbol} ({exchange}): {e}")
-        return False
-    finally:
-        session.close()
 
 def upsert_instruments_bulk(instruments_list: list) -> dict:
     """
     UPSERTS a list of instruments into the database.
-    Updates only metadata, preserving is_favorite and active flags, 
-    but ensures that permanent default dashboard instruments are always active.
+    Updates only metadata.
     """
     session = SessionLocal()
     imported = 0
@@ -319,8 +265,6 @@ def upsert_instruments_bulk(instruments_list: list) -> dict:
             tok = int(row._mapping["token"])
             existing_set.add((sym, exch))
             existing_tokens[tok] = (sym, exch)
-
-        symbols_list_str = ", ".join(f"'{s}'" for s in DEFAULT_SYMBOLS)
 
         delete_params = []
         insert_params = []
@@ -359,9 +303,6 @@ def upsert_instruments_bulk(instruments_list: list) -> dict:
             broker = inst["broker"]
             category = inst["instrument_category"]
 
-            is_default = symbol in DEFAULT_SYMBOLS
-            active_val = True if is_default else False
-
             delete_params.append({"symbol": symbol, "exchange": exchange})
             insert_params.append({
                 "symbol": symbol,
@@ -370,8 +311,7 @@ def upsert_instruments_bulk(instruments_list: list) -> dict:
                 "name": name,
                 "segment": segment,
                 "broker": broker,
-                "category": category,
-                "active_val": active_val
+                "category": category
             })
 
             if (symbol, exchange) in existing_set:
@@ -381,15 +321,6 @@ def upsert_instruments_bulk(instruments_list: list) -> dict:
                 existing_set.add((symbol, exchange))
 
         if delete_params:
-            # Group import mapping to find conflicts where a symbol exists on a different exchange
-            # Delete in a single bulk query to avoid O(N) sequential scans on the PostgreSQL table
-            # Since symbols can be duplicated across exchanges in the import list itself,
-            # we group them to make sure we don't have multiple entries.
-            # Only DELETE instruments whose UPPER(symbol) is in our imported set, but whose UPPER(exchange) matches the conflicting one.
-            # We can select the symbols and their target exchanges.
-            # To do this safely and in a single query:
-            # DELETE FROM instruments WHERE UPPER(symbol) = :symbol AND UPPER(exchange) != :exchange
-            # can be grouped.
             symbol_to_exchange = {}
             for param in delete_params:
                 symbol_to_exchange[param["symbol"]] = param["exchange"]
@@ -399,23 +330,18 @@ def upsert_instruments_bulk(instruments_list: list) -> dict:
             # Batch the conflict check in chunks of 5000 symbols to avoid query parameter limits
             chunk_size = 5000
             conflicting_ids = []
-            conflicting_prefs = {}  # symbol -> (is_favorite, active)
             for i in range(0, len(symbols_to_check), chunk_size):
                 chunk = symbols_to_check[i:i+chunk_size]
                 res = session.execute(
-                    text("SELECT id, symbol, exchange, is_favorite, active FROM instruments WHERE UPPER(symbol) IN :symbols;"),
+                    text("SELECT id, symbol, exchange FROM instruments WHERE UPPER(symbol) IN :symbols;"),
                     {"symbols": tuple(chunk)}
                 )
                 for row in res.fetchall():
                     row_id = row._mapping["id"]
                     sym = row._mapping["symbol"].upper()
                     exch = row._mapping["exchange"].upper()
-                    is_fav = bool(row._mapping["is_favorite"])
-                    is_act = bool(row._mapping["active"])
                     if symbol_to_exchange.get(sym) != exch:
                         conflicting_ids.append(row_id)
-                        # Keep track of the user preferences for this symbol
-                        conflicting_prefs[sym] = (is_fav, is_act)
             
             if conflicting_ids:
                 # Delete conflicting records by ID (indexed primary key scan, extremely fast)
@@ -425,28 +351,16 @@ def upsert_instruments_bulk(instruments_list: list) -> dict:
                         {"ids": tuple(conflicting_ids[i:i+chunk_size])}
                     )
 
-        # Update insert_params to inherit preferences from deleted conflicting instruments
-        for param in insert_params:
-            sym = param["symbol"]
-            if sym in conflicting_prefs:
-                is_fav, is_act = conflicting_prefs[sym]
-                # Inherit the favorite and active state from the replaced exchange version
-                param["active_val"] = is_act or param["active_val"]
-                param["is_fav_val"] = is_fav
-            else:
-                param["is_fav_val"] = False
-
         if insert_params:
             session.execute(
-                text(f"""
-                    INSERT INTO instruments (symbol, token, exchange, name, segment, broker, active, is_favorite, instrument_category)
-                    VALUES (:symbol, :token, :exchange, :name, :segment, :broker, :active_val, :is_fav_val, :category)
+                text("""
+                    INSERT INTO instruments (symbol, token, exchange, name, segment, broker, instrument_category)
+                    VALUES (:symbol, :token, :exchange, :name, :segment, :broker, :category)
                     ON CONFLICT (symbol, exchange) DO UPDATE SET
                         token = EXCLUDED.token,
                         name = EXCLUDED.name,
                         segment = EXCLUDED.segment,
                         broker = EXCLUDED.broker,
-                        active = CASE WHEN EXCLUDED.symbol IN ({symbols_list_str}) THEN TRUE ELSE instruments.active END,
                         instrument_category = EXCLUDED.instrument_category,
                         updated_at = CURRENT_TIMESTAMP;
                 """),
@@ -460,59 +374,6 @@ def upsert_instruments_bulk(instruments_list: list) -> dict:
     finally:
         session.close()
     return {"imported": imported, "updated": updated, "skipped": skipped}
-
-def get_favorite_instruments() -> list:
-    """
-    Retrieves all instruments that are active and marked as favorite.
-    If no favorites exist, returns:
-      - Up to 3 active index instruments (ORDER BY symbol ASC LIMIT 3)
-      - Up to 10 active stock instruments (ORDER BY symbol ASC LIMIT 10)
-    If no active instruments exist, returns empty list.
-    """
-    session = SessionLocal()
-    try:
-        # 1. Fetch active favorites
-        result = session.execute(text("""
-            SELECT id, symbol, token, exchange, name, segment, broker, active, is_favorite, instrument_category, created_at, updated_at
-            FROM instruments
-            WHERE active = TRUE AND is_favorite = TRUE
-            ORDER BY symbol ASC;
-        """))
-        rows = result.fetchall()
-        favorites = [dict(row._mapping) for row in rows]
-        
-        if favorites:
-            return favorites
-
-        # 2. No favorites: fetch fallback indices & stocks
-        result_indices = session.execute(text("""
-            SELECT id, symbol, token, exchange, name, segment, broker, active, is_favorite, instrument_category, created_at, updated_at
-            FROM instruments
-            WHERE active = TRUE 
-              AND UPPER(instrument_category) = 'INDEX'
-            ORDER BY symbol ASC
-            LIMIT 3;
-        """))
-        indices = [dict(row._mapping) for row in result_indices.fetchall()]
-
-        result_stocks = session.execute(text("""
-            SELECT id, symbol, token, exchange, name, segment, broker, active, is_favorite, instrument_category, created_at, updated_at
-            FROM instruments
-            WHERE active = TRUE
-              AND UPPER(instrument_category) = 'STOCK'
-            ORDER BY symbol ASC
-            LIMIT 10;
-        """))
-        stocks = [dict(row._mapping) for row in result_stocks.fetchall()]
-
-        return indices + stocks
-
-    except Exception as e:
-        logger.error(f"Error fetching favorite instruments: {e}")
-        return []
-    finally:
-        session.close()
-
 
 def check_duplicate(symbol: str, exchange: str, token: int) -> dict:
     """
@@ -552,7 +413,7 @@ def get_dashboard_watchlist(watchlist_id: int = None) -> dict:
     """
     session = SessionLocal()
     try:
-        columns = "id, symbol, token, exchange, name, segment, broker, active, is_favorite, instrument_category, created_at, updated_at"
+        columns = "id, symbol, token, exchange, name, segment, broker, instrument_category, created_at, updated_at"
 
         # ── Indices (strictly category = 'INDEX') ────────────────
         DASHBOARD_TOP_INDICES = [
@@ -593,7 +454,7 @@ def get_dashboard_watchlist(watchlist_id: int = None) -> dict:
                 resolved_watchlist_id = watchlist_id
                 # 2. Query watchlist items JOIN instruments directly
                 stocks_result = session.execute(text(f"""
-                    SELECT i.id, i.symbol, i.token, i.exchange, i.name, i.segment, i.broker, i.active, i.is_favorite, i.instrument_category, i.created_at, i.updated_at
+                    SELECT i.id, i.symbol, i.token, i.exchange, i.name, i.segment, i.broker, i.instrument_category, i.created_at, i.updated_at
                     FROM instruments i
                     JOIN watchlist_items wi ON i.id = wi.instrument_id
                     WHERE wi.watchlist_id = :watchlist_id
@@ -609,8 +470,7 @@ def get_dashboard_watchlist(watchlist_id: int = None) -> dict:
                 fallback_stocks_result = session.execute(text(f"""
                     SELECT {columns}
                     FROM instruments
-                    WHERE active = TRUE
-                      AND UPPER(instrument_category) != 'INDEX'
+                    WHERE UPPER(instrument_category) != 'INDEX'
                       AND UPPER(symbol) IN ({placeholders})
                 """), params)
                 fallback_map = {}
@@ -664,32 +524,6 @@ def delete_all_instruments() -> int:
         session.close()
 
 
-def get_favorites_count(category: str) -> int:
-    """
-    Returns the count of active favorite instruments for a given category.
-    If category is 'INDEX', counts indices.
-    Otherwise, counts non-INDEX favorites (STOCK, ETF, FUTURE, OPTION).
-    """
-    session = SessionLocal()
-    try:
-        if category == "INDEX":
-            res = session.execute(text("""
-                SELECT COUNT(*) FROM instruments 
-                WHERE active = TRUE AND is_favorite = TRUE AND UPPER(instrument_category) = 'INDEX';
-            """))
-        else:
-            res = session.execute(text("""
-                SELECT COUNT(*) FROM instruments 
-                WHERE active = TRUE AND is_favorite = TRUE AND UPPER(instrument_category) != 'INDEX';
-            """))
-        return res.scalar() or 0
-    except Exception as e:
-        logger.error(f"Error getting favorites count for category {category}: {e}")
-        return 0
-    finally:
-        session.close()
-
-
 def get_instrument_by_symbol_exchange(symbol: str, exchange: str) -> dict:
     """
     Retrieves a single instrument by symbol and exchange.
@@ -697,7 +531,7 @@ def get_instrument_by_symbol_exchange(symbol: str, exchange: str) -> dict:
     session = SessionLocal()
     try:
         res = session.execute(text("""
-            SELECT id, symbol, token, exchange, name, segment, broker, active, is_favorite, instrument_category
+            SELECT id, symbol, token, exchange, name, segment, broker, instrument_category
             FROM instruments
             WHERE UPPER(symbol) = :symbol AND UPPER(exchange) = :exchange;
         """), {"symbol": symbol.upper().strip(), "exchange": exchange.upper().strip()})

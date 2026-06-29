@@ -10,13 +10,10 @@ from database.instrument_repository import (
     create_instrument as db_create,
     delete_instrument as db_delete,
     delete_instruments_bulk as db_delete_bulk,
-    toggle_favorite as db_toggle_favorite,
-    get_favorite_instruments as db_get_favorites,
     check_duplicate as db_check_duplicate,
     search_instruments as db_search,
     upsert_instruments_bulk as db_upsert_bulk,
     delete_all_instruments as db_delete_all,
-    get_favorites_count as db_get_favorites_count,
     get_instrument_by_symbol_exchange as db_get_instrument,
     get_instrument_by_symbol as db_get_instrument_by_symbol
 )
@@ -92,11 +89,6 @@ class InstrumentCreate(BaseModel):
         if v_upper not in allowed:
             raise ValueError(f"Category must be one of: {allowed}")
         return v_upper
-
-class FavoriteUpdate(BaseModel):
-    is_favorite: bool
-
-
 
 
 @router.get("/search", response_model=List[Dict[str, Any]])
@@ -319,69 +311,6 @@ def bulk_delete_instruments(payload: BulkDeleteRequest):
     targets = [{"symbol": item.symbol, "exchange": item.exchange} for item in payload.instruments]
     deleted_count = db_delete_bulk(targets)
     return {"status": "success", "message": f"Successfully deleted {deleted_count} instruments from the catalog."}
-
-
-
-@router.patch("/{symbol}/favorite")
-def toggle_favorite(
-    symbol: str = Path(..., min_length=1),
-    exchange: str = None,
-    payload: FavoriteUpdate = Body(...)
-):
-    """
-    Toggles/updates favorite status of an instrument and refreshes the cache.
-    """
-    if not exchange:
-        raise HTTPException(status_code=400, detail="Exchange parameter is mandatory.")
-    symbol_upper = symbol.upper().strip()
-    exchange_upper = exchange.upper().strip()
-    logger.info(f"PATCH /instruments/{symbol_upper}/favorite?exchange={exchange_upper} -> {payload.is_favorite}")
-
-    # Fetch the instrument to verify existence and check its category/favorite status
-    inst = db_get_instrument(symbol_upper, exchange_upper)
-    if not inst:
-        raise HTTPException(status_code=404, detail=f"Instrument '{symbol_upper}' on exchange '{exchange_upper}' not found.")
-
-    if payload.is_favorite and not inst.get("is_favorite"):
-        # We are favoriting a new instrument. Check limits.
-        category = inst.get("instrument_category") or "STOCK"
-        current_fav_count = db_get_favorites_count(category)
-        if category == "INDEX":
-            if current_fav_count >= 3:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Cannot add favorite. Maximum limit of 3 favorite indices reached."
-                )
-        else:
-            if current_fav_count >= 10:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Cannot add favorite. Maximum limit of 10 favorite stocks/instruments reached."
-                )
-
-    success = db_toggle_favorite(symbol_upper, exchange_upper, payload.is_favorite)
-    if not success:
-        raise HTTPException(status_code=404, detail=f"Instrument '{symbol_upper}' on exchange '{exchange_upper}' not found.")
-
-    # Refresh instrument cache and update active subscriptions
-    try:
-        reload_instruments()
-        from market_data.kite_client import update_subscriptions
-        update_subscriptions()
-    except Exception as e:
-        logger.warning(f"Failed to reload instrument cache or update subscriptions: {e}")
-
-    return {"status": "success", "message": f"Instrument '{symbol_upper}' on exchange '{exchange_upper}' favorite set to {payload.is_favorite}."}
-
-
-
-@router.get("/favorites", response_model=List[Dict[str, Any]])
-def get_favorite_instruments():
-    """
-    Retrieves all instruments that are active and marked as favorite.
-    """
-    logger.info("GET /instruments/favorites requested.")
-    return db_get_favorites()
 
 
 class SyncRequest(BaseModel):

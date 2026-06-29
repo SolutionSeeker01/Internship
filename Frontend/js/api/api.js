@@ -88,41 +88,7 @@ async function deleteInstrument(symbol, exchange) {
     return await response.json();
 }
 
-/**
- * Toggles the favorite status of an instrument.
- * @param {string} symbol 
- * @param {boolean} isFavorite 
- * @returns {Promise<object>}
- */
-async function toggleInstrumentFavorite(symbol, exchange, isFavorite) {
-    if (!exchange) throw new Error("Exchange is mandatory to toggle favorite status.");
-    const response = await fetch(`http://127.0.0.1:8000/instruments/${symbol}/favorite?exchange=${encodeURIComponent(exchange)}`, {
-        method: "PATCH",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ is_favorite: isFavorite })
-    });
-    if (!response.ok) {
-        const errorDetail = await response.json();
-        throw new Error(errorDetail.detail || `Failed to toggle favorite: ${response.status}`);
-    }
-    return await response.json();
-}
 
-
-
-/**
- * Fetches only favorite active instruments.
- * @returns {Promise<Array>}
- */
-async function getFavoriteInstruments() {
-    const response = await fetch("http://127.0.0.1:8000/instruments/favorites", { cache: 'no-store' });
-    if (!response.ok) {
-        throw new Error(`Failed to fetch favorite instruments: ${response.status}`);
-    }
-    return await response.json();
-}
 
 /**
  * Fetches the dashboard watchlist with independent favorite/fallback logic.

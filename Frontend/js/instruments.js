@@ -37,6 +37,9 @@ function switchView(view) {
         instLayout.style.display = "none";
         navDashboard.classList.add("active");
         navInstruments.classList.remove("active");
+        if (typeof restoreSelectedWatchlistState === "function") {
+            restoreSelectedWatchlistState();
+        }
         loadWatchlist(); // Dynamic reload
     } else {
         dbLayout.style.display = "none";
@@ -57,6 +60,11 @@ function switchView(view) {
  * Uses cached data when available (non-search). Search always hits the backend.
  * When using cached data, renders instantly without a "Loading..." flash.
  */
+/**
+ * Loads and renders all existing instruments in the Instrument Manager table.
+ * Uses cached data when available (non-search). Search always hits the backend.
+ * When using cached data, renders instantly without a "Loading..." flash.
+ */
 async function loadInstrumentsManagerTable() {
     const tableBody = document.getElementById("instruments-table-body");
     if (!tableBody) return;
@@ -64,12 +72,12 @@ async function loadInstrumentsManagerTable() {
     try {
         if (cachedInstruments !== null) {
             renderInstrumentsTable(tableBody, cachedInstruments);
-            console.info("[Instruments] Using cached favorites.");
+            console.info("[Instruments] Using cached instruments.");
         } else {
-            tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary); padding: 24px;">Loading watchlist...</td></tr>`;
-            const instruments = (await getFavoriteInstruments()).filter(inst => inst.is_favorite);
+            tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary); padding: 24px;">Loading instruments...</td></tr>`;
+            const instruments = await getInstruments();
             cachedInstruments = instruments;
-            console.info("[Instruments] Fetched and cached favorites.");
+            console.info("[Instruments] Fetched and cached instruments.");
             renderInstrumentsTable(tableBody, instruments);
         }
     } catch (err) {
@@ -86,7 +94,7 @@ async function loadInstrumentsManagerTable() {
  */
 function renderInstrumentsTable(tableBody, instruments) {
     if (instruments.length === 0) {
-        tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary); padding: 24px;">No instruments in watchlist. Search above to add.</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary); padding: 24px;">No instruments in catalog. Search above to add.</td></tr>`;
         return;
     }
 
@@ -107,9 +115,6 @@ function renderInstrumentsTable(tableBody, instruments) {
             <td>${inst.instrument_category || 'STOCK'}</td>
             <td class="text-right" style="padding-right: 24px;">
                 <div class="action-btn-group">
-                    <button class="btn-action btn-fav ${inst.is_favorite ? 'active' : ''}" onclick="handleToggleFavorite('${inst.symbol}', '${inst.exchange}', ${inst.is_favorite})">
-                        ${inst.is_favorite ? '★ Favorite' : '☆ Favorite'}
-                    </button>
                     <button class="btn-action btn-delete" onclick="handleDeleteInstrument('${inst.symbol}', '${inst.exchange}')">
                         Delete
                     </button>
@@ -150,16 +155,16 @@ function renderSearchDropdown(results) {
                 item.style.background = "#ffffff";
             });
             
-            // Check if this is already in the watchlist/favorites
-            const isFav = cachedInstruments ? cachedInstruments.some(c => c.symbol === inst.symbol && c.exchange === inst.exchange && c.is_favorite) : inst.is_favorite;
+            // Check if this is already in the watchlist/instruments cache
+            const alreadyExists = cachedInstruments ? cachedInstruments.some(c => c.symbol === inst.symbol && c.exchange === inst.exchange) : false;
             
             item.innerHTML = `
                 <div style="display: flex; flex-direction: column; min-width: 0;">
                     <span style="font-weight: 600; font-size: 13px; color: var(--text-primary);">${inst.symbol} <span style="font-size: 10px; color: var(--text-secondary); background: var(--bg-card); padding: 2px 4px; border-radius: 4px; margin-left: 4px;">${inst.exchange}</span></span>
                     <span style="font-size: 11px; color: var(--text-secondary); text-overflow: ellipsis; white-space: nowrap; overflow: hidden; max-width: 250px;">${inst.name}</span>
                 </div>
-                <button class="btn-action btn-fav ${isFav ? 'active' : ''}" style="margin-left: auto; padding: 4px 8px; font-size: 11px; margin-top: 0; min-height: 28px;" onclick="event.stopPropagation(); handleSearchToggleFavorite('${inst.symbol}', '${inst.exchange}', ${isFav})">
-                    ${isFav ? '★ Favorite' : '☆ Add'}
+                <button class="btn-action ${alreadyExists ? 'active' : ''}" style="margin-left: auto; padding: 4px 8px; font-size: 11px; margin-top: 0; min-height: 28px;" ${alreadyExists ? 'disabled' : ''} onclick="event.stopPropagation(); handleSearchAddInstrument('${inst.symbol}', ${inst.token}, '${inst.exchange}', '${inst.name.replace(/'/g, "\\'")}', '${inst.segment}', '${inst.instrument_category}')">
+                    ${alreadyExists ? 'Added' : '＋ Add'}
                 </button>
             `;
             dropdown.appendChild(item);
@@ -169,26 +174,32 @@ function renderSearchDropdown(results) {
 }
 
 /**
- * Handles toggling favorite state from the search results dropdown.
+ * Handles adding an instrument from search results.
  */
-async function handleSearchToggleFavorite(symbol, exchange, currentStatus) {
-    const newStatus = !currentStatus;
+async function handleSearchAddInstrument(symbol, token, exchange, name, segment, category) {
     try {
-        await toggleInstrumentFavorite(symbol, exchange, newStatus);
+        const payload = {
+            symbol: symbol,
+            token: token,
+            exchange: exchange,
+            name: name,
+            segment: segment,
+            instrument_category: category,
+            broker: "ZERODHA"
+        };
+        await createInstrument(payload);
         invalidateInstrumentsCache();
-        
-        // Reload the watchlist table (extremely fast since watchlist is small)
         await loadInstrumentsManagerTable();
         
-        // Re-render search dropdown to show updated favorite status
+        // Refresh search view state
         const searchInput = document.getElementById("search-instruments-input");
         if (searchInput) {
             const results = await searchInstruments(searchInput.value.trim());
             renderSearchDropdown(results);
         }
     } catch (err) {
-        console.error(`Failed to toggle favorite from search for ${symbol} (${exchange}):`, err);
-        alert(`Error: ${err.message}`);
+        console.error("Failed to add instrument from search results:", err);
+        alert(`Error adding instrument: ${err.message}`);
     }
 }
 
@@ -235,42 +246,6 @@ async function handleAddInstrumentSubmit() {
 }
 
 /**
- * Handles toggling favorite state of an instrument in the watchlist table.
- * Row-level update: only the affected button is modified in-place.
- */
-async function handleToggleFavorite(symbol, exchange, currentStatus) {
-    const newStatus = !currentStatus;
-
-    try {
-        await toggleInstrumentFavorite(symbol, exchange, newStatus);
-        invalidateInstrumentsCache();
-
-        // --- Row-level DOM update (no table rebuild) ---
-        const row = document.querySelector(`.instrument-row[data-symbol="${symbol}"][data-exchange="${exchange}"]`);
-        if (row) {
-            if (!newStatus) {
-                // Removing from watchlist: remove row immediately
-                row.remove();
-                const tableBody = document.getElementById("instruments-table-body");
-                if (tableBody && tableBody.children.length === 0) {
-                    tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary); padding: 24px;">No instruments in watchlist. Search above to add.</td></tr>`;
-                }
-            } else {
-                const favBtn = row.querySelector('.btn-fav');
-                if (favBtn) {
-                    favBtn.textContent = '★ Favorite';
-                    favBtn.classList.add('active');
-                    favBtn.setAttribute('onclick', `handleToggleFavorite('${symbol}', '${exchange}', ${newStatus})`);
-                }
-            }
-        }
-    } catch (err) {
-        console.error(`Failed to toggle favorite for ${symbol} (${exchange}):`, err);
-        alert(`Error: ${err.message}`);
-    }
-}
-
-/**
  * Handles deletion of an instrument.
  */
 async function handleDeleteInstrument(symbol, exchange) {
@@ -289,7 +264,7 @@ async function handleDeleteInstrument(symbol, exchange) {
             row.remove();
             const tableBody = document.getElementById("instruments-table-body");
             if (tableBody && tableBody.children.length === 0) {
-                tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary); padding: 24px;">No instruments in watchlist. Search above to add.</td></tr>`;
+                tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary); padding: 24px;">No instruments in catalog. Search above to add.</td></tr>`;
             }
         }
     } catch (err) {
@@ -357,7 +332,7 @@ async function handleSyncInstruments() {
  * Handles clearing ALL instruments with a confirmation dialog.
  */
 async function handleClearAllInstruments() {
-    if (!confirm("⚠️ Are you sure you want to delete ALL instruments?\n\nThis action cannot be undone. All instruments, favorites, and synced data will be removed.")) {
+    if (!confirm("⚠️ Are you sure you want to delete ALL instruments?\n\nThis action cannot be undone. All instruments and synced data will be removed.")) {
         return;
     }
 
@@ -373,7 +348,7 @@ async function handleClearAllInstruments() {
         
         const tableBody = document.getElementById("instruments-table-body");
         if (tableBody) {
-            tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary); padding: 24px;">No instruments in watchlist. Search above to add.</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary); padding: 24px;">No instruments in catalog. Search above to add.</td></tr>`;
         }
     } catch (err) {
         console.error("Failed to clear all instruments:", err);

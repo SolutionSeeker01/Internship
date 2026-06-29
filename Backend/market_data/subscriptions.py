@@ -35,7 +35,7 @@ def reload_instruments() -> None:
     try:
         # 1. Fetch dynamic indices (UPPER(instrument_category) = 'INDEX')
         index_sql = text("""
-            SELECT id, symbol, token, exchange, name, segment, broker, active
+            SELECT id, symbol, token, exchange, name, segment, broker
             FROM instruments
             WHERE UPPER(instrument_category) = 'INDEX';
         """)
@@ -47,7 +47,7 @@ def reload_instruments() -> None:
             stk_placeholders = ", ".join([f":stk_{i}" for i in range(len(DEFAULT_STOCKS))])
             stk_params = {f"stk_{i}": sym for i, sym in enumerate(DEFAULT_STOCKS)}
             stk_sql = text(f"""
-                SELECT id, symbol, token, exchange, name, segment, broker, active
+                SELECT id, symbol, token, exchange, name, segment, broker
                 FROM instruments
                 WHERE UPPER(symbol) IN ({stk_placeholders})
                   AND UPPER(instrument_category) != 'INDEX';
@@ -56,7 +56,7 @@ def reload_instruments() -> None:
         
         # 3. Fetch all watchlist instruments
         watchlist_sql = text("""
-            SELECT i.id, i.symbol, i.token, i.exchange, i.name, i.segment, i.broker, i.active
+            SELECT i.id, i.symbol, i.token, i.exchange, i.name, i.segment, i.broker
             FROM instruments i
             JOIN watchlist_items wi ON i.id = wi.instrument_id;
         """)
@@ -114,8 +114,7 @@ def reload_instruments() -> None:
                 "exchange": mapping["exchange"],
                 "name": mapping["name"],
                 "segment": mapping["segment"],
-                "broker": mapping["broker"],
-                "active": bool(mapping["active"]),
+                "broker": mapping["broker"]
             }
             new_symbol_to_metadata[symbol] = meta_dict
             new_token_to_metadata[token] = meta_dict
@@ -164,7 +163,7 @@ def rebuild_universe_cache() -> None:
 
 def load_instruments() -> None:
     """
-    Loads active instruments into RAM. Typically called once at startup.
+    Loads subscription universe instruments into RAM. Typically called once at startup.
     """
     reload_instruments()
     rebuild_universe_cache()
@@ -199,13 +198,13 @@ def get_symbol(token: int) -> Optional[str]:
     with _lock:
         symbol = _TOKEN_TO_SYMBOL.get(token)
     if not symbol:
-        logger.warning(f"Lookup failed: Instrument token {token} not found in active subscriptions.")
+        logger.warning(f"Lookup failed: Instrument token {token} not found in subscription registry.")
     return symbol
 
 
 def get_instrument_metadata(token: int) -> Optional[Dict[str, Any]]:
     """
-    Returns full metadata for an active instrument by its Zerodha token from RAM cache.
+    Returns full metadata for an instrument by its Zerodha token from RAM cache.
     """
     with _lock:
         return _TOKEN_TO_METADATA.get(token)

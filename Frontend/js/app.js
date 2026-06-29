@@ -34,12 +34,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.error("Failed to connect WebSocket:", e);
     }
     
-    // 4. Load Watchlist dynamically
-    try {
-        await loadWatchlist();
-    } catch (e) {
-        console.error("Failed to load watchlist:", e);
-    }
+    
     
     // 5. Initialize Chart and Load Default Symbol Candles
     try {

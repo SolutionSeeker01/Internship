@@ -51,13 +51,13 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to initialize database schema on startup: {e}")
         raise
 
-    # Load active instruments from PostgreSQL into RAM cache
+    # Load subscription universe from PostgreSQL into RAM cache
     try:
         from market_data.subscriptions import load_instruments
         load_instruments()
-        logger.info("Active instruments successfully loaded from database into RAM.")
+        logger.info("Subscription universe successfully loaded from database into RAM.")
     except Exception as e:
-        logger.error(f"Failed to load active instruments at startup: {e}")
+        logger.error(f"Failed to load subscription universe at startup: {e}")
         raise
 
     # Load universe cache
