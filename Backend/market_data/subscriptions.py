@@ -18,26 +18,82 @@ _TOKEN_TO_METADATA: Dict[int, Dict[str, Any]] = {}
 
 def reload_instruments() -> None:
     """
-    Reloads all active instruments from the PostgreSQL database into the RAM cache.
-    Rebuilds lookup tables atomically and thread-safely.
+    Reloads the subscription universe from PostgreSQL into the RAM cache.
+    The universe is computed as the Union of:
+      1. All instruments present in all user watchlists.
+      2. Default dashboard stock fallback symbols.
+      3. Available indices.
 
-    Raises:
-        RuntimeError: If no active instruments are found in the database.
+    Uniqueness is strictly enforced using instrument 'token' as the key.
     """
     global _TOKEN_TO_SYMBOL, _SYMBOL_TO_METADATA, _TOKEN_TO_METADATA
-    logger.info("Reloading active instruments from database...")
+    logger.info("Reloading subscription universe from database...")
+    
+    from database.defaults import DEFAULT_STOCKS
+    
     session = SessionLocal()
     try:
-        sql = text("""
+        # 1. Fetch dynamic indices (UPPER(instrument_category) = 'INDEX')
+        index_sql = text("""
             SELECT id, symbol, token, exchange, name, segment, broker, active
             FROM instruments
-            WHERE active = TRUE;
+            WHERE UPPER(instrument_category) = 'INDEX';
         """)
-        result = session.execute(sql)
-        rows = result.fetchall()
+        index_rows = session.execute(index_sql).fetchall()
+        
+        # 2. Fetch default dashboard fallback stocks
+        default_stock_rows = []
+        if DEFAULT_STOCKS:
+            stk_placeholders = ", ".join([f":stk_{i}" for i in range(len(DEFAULT_STOCKS))])
+            stk_params = {f"stk_{i}": sym for i, sym in enumerate(DEFAULT_STOCKS)}
+            stk_sql = text(f"""
+                SELECT id, symbol, token, exchange, name, segment, broker, active
+                FROM instruments
+                WHERE UPPER(symbol) IN ({stk_placeholders})
+                  AND UPPER(instrument_category) != 'INDEX';
+            """)
+            default_stock_rows = session.execute(stk_sql, stk_params).fetchall()
+        
+        # 3. Fetch all watchlist instruments
+        watchlist_sql = text("""
+            SELECT i.id, i.symbol, i.token, i.exchange, i.name, i.segment, i.broker, i.active
+            FROM instruments i
+            JOIN watchlist_items wi ON i.id = wi.instrument_id;
+        """)
+        watchlist_rows = session.execute(watchlist_sql).fetchall()
 
-        if not rows:
-            logger.warning("No active instruments found in database. Clearing cache.")
+        # Combine sets, maintaining metrics for logging
+        unique_instruments = {}
+        index_count = 0
+        default_stocks_count = 0
+        watchlist_count = 0
+
+        # Process indices
+        for row in index_rows:
+            mapping = row._mapping
+            token = int(mapping["token"])
+            if token not in unique_instruments:
+                unique_instruments[token] = mapping
+                index_count += 1
+
+        # Process default stocks
+        for row in default_stock_rows:
+            mapping = row._mapping
+            token = int(mapping["token"])
+            if token not in unique_instruments:
+                unique_instruments[token] = mapping
+                default_stocks_count += 1
+
+        # Process watchlist items
+        for row in watchlist_rows:
+            mapping = row._mapping
+            token = int(mapping["token"])
+            if token not in unique_instruments:
+                unique_instruments[token] = mapping
+                watchlist_count += 1
+
+        if not unique_instruments:
+            logger.warning("WARNING: No instruments available for subscription. Clearing cache.")
             with _lock:
                 _TOKEN_TO_SYMBOL = {}
                 _SYMBOL_TO_METADATA = {}
@@ -48,14 +104,11 @@ def reload_instruments() -> None:
         new_symbol_to_metadata: Dict[str, Dict[str, Any]] = {}
         new_token_to_metadata: Dict[int, Dict[str, Any]] = {}
 
-        for row in rows:
-            mapping = row._mapping
+        for token, mapping in unique_instruments.items():
             symbol = mapping["symbol"]
-            token = int(mapping["token"])
-
             new_token_to_symbol[token] = symbol
             meta_dict = {
-                "id": symbol,  # For backward compatibility as the frontend expects key symbol as id
+                "id": symbol,
                 "symbol": symbol,
                 "token": token,
                 "exchange": mapping["exchange"],
@@ -67,19 +120,26 @@ def reload_instruments() -> None:
             new_symbol_to_metadata[symbol] = meta_dict
             new_token_to_metadata[token] = meta_dict
 
-        # Update cache under lock to ensure thread safety for active readers (e.g. KiteTicker thread)
+        # Update cache under lock to ensure thread safety
         with _lock:
             _TOKEN_TO_SYMBOL = new_token_to_symbol
             _SYMBOL_TO_METADATA = new_symbol_to_metadata
             _TOKEN_TO_METADATA = new_token_to_metadata
 
-        logger.info(f"Successfully loaded {len(new_symbol_to_metadata)} active instruments into cache.")
+        logger.info(
+            f"Reloaded subscription universe.\n"
+            f"    Indices subscribed: {index_count}\n"
+            f"    Default fallback stocks subscribed: {default_stocks_count}\n"
+            f"    Watchlist instruments subscribed: {watchlist_count}\n"
+            f"    Total unique subscriptions: {len(unique_instruments)}"
+        )
         rebuild_universe_cache()
     except Exception as e:
         logger.error(f"Error loading instruments from database: {e}")
         raise
     finally:
         session.close()
+
 
 
 def rebuild_universe_cache() -> None:

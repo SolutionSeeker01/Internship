@@ -391,8 +391,8 @@ async function loadWatchlist() {
         // ── Render Indices ──────────────────────────────────────
         if (indicesContainer) {
             if (indices.length === 0) {
-                indicesContainer.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-secondary); padding: 16px; background: var(--bg-card); border-radius: var(--radius-lg); border: 1px solid var(--border-color); font-size: 13px;">No index instruments found.</div>`;
-            } else if (indicesContainer.children.length === 0 || indicesContainer.querySelector("div[style*='grid-column']")) {
+                indicesContainer.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-secondary); padding: 16px; background: var(--bg-card); border-radius: var(--radius-lg); border: 1px solid var(--border-color); font-size: 13px;">No indices available.</div>`;
+            } else {
                 indicesContainer.innerHTML = "";
                 indices.forEach(ind => {
                     const card = document.createElement("div");

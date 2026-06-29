@@ -550,53 +550,30 @@ def get_dashboard_watchlist(watchlist_id: int = None) -> dict:
             "selected_watchlist_id": int | None
         }
     """
-    SEARCH_INDICES = [
-        "NIFTY50", "NIFTY 50", "BANKNIFTY", "NIFTY BANK", "SENSEX"
-    ]
-
     session = SessionLocal()
     try:
         columns = "id, symbol, token, exchange, name, segment, broker, active, is_favorite, instrument_category, created_at, updated_at"
 
         # ── Indices (strictly category = 'INDEX') ────────────────
-        # Deprecate favorite index queries; load default priority list directly
-        if SEARCH_INDICES:
-            placeholders = ", ".join([f":idx_{i}" for i in range(len(SEARCH_INDICES))])
-            params = {f"idx_{i}": sym for i, sym in enumerate(SEARCH_INDICES)}
-            fallback_indices_result = session.execute(text(f"""
-                SELECT {columns}
-                FROM instruments
-                WHERE active = TRUE
-                  AND UPPER(instrument_category) = 'INDEX'
-                  AND UPPER(symbol) IN ({placeholders})
-            """), params)
-            fallback_map = {}
-            for row in fallback_indices_result.fetchall():
-                row_dict = dict(row._mapping)
-                fallback_map[row_dict["symbol"].upper()] = row_dict
-            
-            # Assemble in the requested priority order, preferring exact or space-spaced match
-            fallback_indices = []
-            
-            # 1. NIFTY50 / NIFTY 50
-            if "NIFTY50" in fallback_map:
-                fallback_indices.append(fallback_map["NIFTY50"])
-            elif "NIFTY 50" in fallback_map:
-                fallback_indices.append(fallback_map["NIFTY 50"])
-                
-            # 2. BANKNIFTY / NIFTY BANK
-            if "BANKNIFTY" in fallback_map:
-                fallback_indices.append(fallback_map["BANKNIFTY"])
-            elif "NIFTY BANK" in fallback_map:
-                fallback_indices.append(fallback_map["NIFTY BANK"])
-                
-            # 3. SENSEX
-            if "SENSEX" in fallback_map:
-                fallback_indices.append(fallback_map["SENSEX"])
-            
-            indices = fallback_indices
-        else:
-            indices = []
+        DASHBOARD_TOP_INDICES = [
+            "NIFTY50",
+            "NIFTY 50",
+            "BANKNIFTY",
+            "NIFTY BANK",
+            "SENSEX"
+        ]
+        
+        placeholders = ", ".join([f":idx_{i}" for i in range(len(DASHBOARD_TOP_INDICES))])
+        params = {f"idx_{i}": sym for i, sym in enumerate(DASHBOARD_TOP_INDICES)}
+        
+        indices_result = session.execute(text(f"""
+            SELECT {columns}
+            FROM instruments
+            WHERE UPPER(symbol) IN ({placeholders})
+              AND UPPER(instrument_category) = 'INDEX'
+            ORDER BY symbol ASC;
+        """), params)
+        indices = [dict(row._mapping) for row in indices_result.fetchall()]
 
         # ── Stocks & Others (strictly category != 'INDEX') ────────
         stocks = []

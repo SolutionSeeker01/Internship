@@ -110,6 +110,15 @@ def add_watchlist_item(id: int = Path(..., gt=0), payload: WatchlistItemAdd = Bo
     if not success:
         raise HTTPException(status_code=500, detail="Failed to add instrument to watchlist.")
     
+    # Refresh ticker subscriptions dynamically
+    try:
+        from market_data.subscriptions import reload_instruments
+        from market_data.kite_client import update_subscriptions
+        reload_instruments()
+        update_subscriptions()
+    except Exception as e:
+        logger.warning(f"Failed to refresh subscriptions on item addition: {e}")
+        
     return {"status": "success", "message": "Instrument added to watchlist successfully."}
 
 
@@ -126,6 +135,15 @@ def remove_watchlist_item(id: int = Path(..., gt=0), instrument_id: int = Path(.
     success = db_remove_item(id, instrument_id)
     if not success:
         raise HTTPException(status_code=404, detail="Instrument not found in this watchlist.")
+        
+    # Refresh ticker subscriptions dynamically
+    try:
+        from market_data.subscriptions import reload_instruments
+        from market_data.kite_client import update_subscriptions
+        reload_instruments()
+        update_subscriptions()
+    except Exception as e:
+        logger.warning(f"Failed to refresh subscriptions on item deletion: {e}")
         
     return {"status": "success", "message": "Instrument removed from watchlist successfully."}
 
