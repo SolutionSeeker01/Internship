@@ -1,5 +1,5 @@
-from fastapi import APIRouter
-from typing import Dict, List, Any
+from fastapi import APIRouter, Query
+from typing import Dict, List, Any, Optional
 
 from database.instrument_repository import get_dashboard_watchlist as db_get_dashboard_watchlist
 from utils.logger import get_logger
@@ -10,23 +10,10 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
 @router.get("/watchlist", response_model=Dict[str, Any])
-def get_watchlist():
+def get_watchlist(watchlist_id: Optional[int] = Query(None)):
     """
     Returns the instruments the dashboard should render.
-
-    Response structure:
-        {
-            "indices": [...],
-            "stocks":  [...],
-            "view_mode": {
-                "indices": "favorites" | "fallback" | "empty",
-                "stocks":  "favorites" | "fallback" | "empty"
-            }
-        }
-
-    Business logic is entirely backend-owned:
-      - Indices: favorite indices if any exist, else top 3 active indices, else empty.
-      - Stocks:  favorite stocks  if any exist, else top 10 active stocks, else empty.
     """
-    logger.info("GET /dashboard/watchlist requested.")
-    return db_get_dashboard_watchlist()
+    logger.info(f"GET /dashboard/watchlist requested. watchlist_id={watchlist_id}")
+    return db_get_dashboard_watchlist(watchlist_id)
+

@@ -27,6 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const btnDashboard = document.getElementById("nav-btn-dashboard");
     const btnInstruments = document.getElementById("nav-btn-instruments");
+    const btnWatchlists = document.getElementById("nav-btn-watchlists");
     const btnUsers = document.getElementById("nav-btn-users");
     const btnLogout = document.getElementById("nav-btn-logout");
 
@@ -35,6 +36,8 @@ document.addEventListener('DOMContentLoaded', () => {
         btnDashboard.classList.add("active");
     } else if (pageName === "instrument-manager.html" && btnInstruments) {
         btnInstruments.classList.add("active");
+    } else if (pageName === "watchlists.html" && btnWatchlists) {
+        btnWatchlists.classList.add("active");
     }
 
     // Set up standard listeners
@@ -46,6 +49,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btnInstruments) {
         btnInstruments.addEventListener("click", () => {
             window.location.replace("instrument-manager.html");
+        });
+    }
+    if (btnWatchlists) {
+        btnWatchlists.addEventListener("click", () => {
+            window.location.replace("watchlists.html");
         });
     }
     if (btnUsers) {

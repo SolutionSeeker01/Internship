@@ -1,0 +1,300 @@
+/* =====================================================
+   WATCHLISTS PAGE STYLING
+   ===================================================== */
+
+.watchlists-layout {
+    max-width: 1440px;
+    margin: 32px auto;
+    padding: 0 var(--space-lg);
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    flex: 1;
+}
+
+.watchlists-grid-container {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 24px;
+    align-items: start;
+}
+
+/* Watchlist Selection Column (Left) */
+.watchlist-sidebar-card {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: var(--space-lg);
+    box-shadow: var(--shadow-premium);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.watchlist-sidebar-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.watchlist-item-row {
+    padding: 12px 16px;
+    background-color: var(--bg-page);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-primary);
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.watchlist-item-row:hover {
+    background-color: var(--bg-table-hover);
+    border-color: var(--text-secondary);
+}
+
+.watchlist-item-row.active {
+    background-color: var(--accent-bg);
+    border-color: var(--accent-blue);
+    color: var(--accent-blue);
+}
+
+/* Details and CRUD actions Column (Right) */
+.watchlist-details-card {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: var(--space-lg);
+    box-shadow: var(--shadow-premium);
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    min-height: 400px;
+}
+
+.details-header {
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 12px;
+}
+
+.details-header h2 {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.details-grid {
+    display: grid;
+    grid-template-columns: 100px 1fr;
+    gap: 12px;
+    font-size: 14px;
+}
+
+.details-label {
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.details-value {
+    color: var(--text-primary);
+}
+
+/* Actions styling */
+.action-box {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    border-top: 1px solid var(--border-color);
+    padding-top: 16px;
+}
+
+.action-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.action-form-inline {
+    display: flex;
+    gap: 8px;
+}
+
+.action-form-inline input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    font-size: 14px;
+    color: var(--text-primary);
+}
+
+.watchlist-button-delete {
+    background-color: var(--color-negative);
+    color: #ffffff;
+    border: none;
+    padding: 10px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: background 0.2s;
+    width: 100%;
+}
+
+.watchlist-button-delete:hover {
+    background-color: #b91c1c;
+}
+
+.notice-area {
+    margin-top: auto;
+    background-color: var(--bg-page);
+    border: 1px dashed var(--border-color);
+    padding: var(--space-md);
+    border-radius: var(--radius-md);
+    font-size: 13px;
+    color: var(--text-secondary);
+    text-align: center;
+    font-weight: 500;
+}
+
+/* =====================================================
+   SHARED TABLES & ACTION BUTTONS STYLES
+   ===================================================== */
+.action-btn-group {
+    display: flex;
+    gap: 6px;
+    justify-content: flex-end;
+}
+
+.btn-action {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background-color: #ffffff;
+}
+
+.btn-action.btn-fav {
+    color: var(--text-secondary);
+}
+
+.btn-action.btn-fav.active {
+    background-color: #fef9c3;
+    border-color: #fde047;
+    color: #ca8a04;
+}
+
+.btn-action.btn-delete {
+    color: #dc2626;
+    border-color: rgba(220, 38, 38, 0.2);
+}
+
+.btn-action.btn-delete:hover {
+    background-color: #fee2e2;
+}
+
+.table-responsive {
+    width: 100%;
+    overflow-x: auto;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background-color: var(--bg-card);
+}
+
+.stocks-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-variant-numeric: tabular-nums;
+    table-layout: fixed; /* Enforces strict visual column alignment widths */
+}
+
+.stocks-table th {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background-color: #fafafa;
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border-color);
+    user-select: none;
+}
+
+.stocks-table th:first-child {
+    text-align: left;
+}
+
+.stocks-table tbody tr {
+    border-bottom: 1px solid var(--border-color);
+    background-color: #ffffff;
+    transition: background-color 0.2s ease;
+}
+
+.stocks-table tbody tr:nth-child(even) {
+    background-color: #fafafa;
+}
+
+.stocks-table tbody tr:last-child {
+    border-bottom: none;
+}
+
+.stocks-table tbody tr:hover {
+    background-color: var(--bg-table-hover);
+}
+
+.stocks-table td {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    padding: 10px 16px;
+    vertical-align: middle;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Specific column sizing constraints for balanced layout density */
+.stocks-table th:nth-child(1), .stocks-table td:nth-child(1) {
+    width: 20%; /* Symbol compact */
+    text-align: left;
+}
+.stocks-table th:nth-child(2), .stocks-table td:nth-child(2) {
+    width: 15%; /* Exchange compact */
+    text-align: left;
+}
+.stocks-table th:nth-child(3), .stocks-table td:nth-child(3) {
+    width: 45%; /* Name flexible / largest */
+    text-align: left;
+}
+.stocks-table th:nth-child(4), .stocks-table td:nth-child(4) {
+    width: 20%; /* Actions compact */
+    text-align: right;
+}
+
+
+/* Margin-bottom spacing separation from Danger Zone */
+.watchlist-details-card .action-box:has(.table-responsive) {
+    margin-bottom: 32px;
+}
+
+/* Responsive queries */
+@media (max-width: 768px) {
+    .watchlists-grid-container {
+        grid-template-columns: 1fr;
+    }
+}
+

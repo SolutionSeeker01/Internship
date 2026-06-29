@@ -6,7 +6,7 @@
 
 console.info("[Dashboard] Module loaded.");
 
-const TOTAL_STOCKS_COUNT = 8; // Watchlist stock count
+let TOTAL_STOCKS_COUNT = 8; // Dynamically updated based on active selection count
 
 /**
  * Tracks the last known LTP for every symbol so we can determine
@@ -26,6 +26,12 @@ const currentChanges = new Map();
  * @type {Map<string, object>}
  */
 const latestMarketData = new Map();
+
+// Local state for dashboard watchlist selection
+const state = {
+    watchlists: [],
+    selectedWatchlistId: null
+};
 
 /* -------------------------------------------------------------
    FORMATTING HELPERS
@@ -334,8 +340,7 @@ function setupTimeframeSelection() {
 
 /**
  * Dynamically loads and renders the dashboard watchlist using the dedicated
- * GET /dashboard/watchlist endpoint. The backend owns all business logic
- * (favorite/fallback decisions). The frontend is a pure renderer.
+ * GET /dashboard/watchlist endpoint. The backend owns all business logic.
  */
 async function loadWatchlist() {
     const tableBody = document.getElementById("stocks-table-body");
@@ -349,19 +354,21 @@ async function loadWatchlist() {
     const savedSelectedSymbol = selectedSymbol;
 
     try {
-        const watchlist = await getDashboardWatchlist();
+        const watchlist = await getDashboardWatchlist(state.selectedWatchlistId);
         const { indices, stocks, view_mode } = watchlist;
 
-        // ── Empty Database State ────────────────────────────────
-        if (view_mode.indices === "empty" && view_mode.stocks === "empty") {
+        TOTAL_STOCKS_COUNT = stocks.length;
+
+        // ── Empty State ────────────────────────────────
+        if (view_mode === "empty") {
             if (notification) {
-                notification.textContent = "No instruments configured. Please add instruments in Instrument Manager.";
+                notification.textContent = "This watchlist does not contain any instruments.";
                 notification.style.display = "block";
             }
-            if (indicesContainer) {
-                indicesContainer.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-secondary); padding: 16px; background: var(--bg-card); border-radius: var(--radius-lg); border: 1px solid var(--border-color); font-size: 13px;">No index instruments found. Add INDEX instruments in Instrument Manager.</div>`;
+            if (indicesContainer && indicesContainer.children.length === 0) {
+                indicesContainer.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-secondary); padding: 16px; background: var(--bg-card); border-radius: var(--radius-lg); border: 1px solid var(--border-color); font-size: 13px;">No index instruments found.</div>`;
             }
-            tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary); padding: 24px;">No stocks configured.</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary); padding: 24px;">This watchlist does not contain any instruments.</td></tr>`;
 
             // Clear chart gracefully
             selectedSymbol = "";
@@ -371,17 +378,10 @@ async function loadWatchlist() {
             return;
         }
 
-        // ── Notification Banners ────────────────────────────────
+        // ── Banners ────────────────────────────────
         if (notification) {
-            const bannerParts = [];
-            if (view_mode.indices === "fallback") {
-                bannerParts.push("Showing default indices (no favorite indices selected)");
-            }
-            if (view_mode.stocks === "fallback") {
-                bannerParts.push("Showing default stocks (no favorite stocks selected)");
-            }
-            if (bannerParts.length > 0) {
-                notification.textContent = bannerParts.join(" · ");
+            if (view_mode === "fallback") {
+                notification.textContent = "Showing Default Market View";
                 notification.style.display = "block";
             } else {
                 notification.style.display = "none";
@@ -391,8 +391,8 @@ async function loadWatchlist() {
         // ── Render Indices ──────────────────────────────────────
         if (indicesContainer) {
             if (indices.length === 0) {
-                indicesContainer.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-secondary); padding: 16px; background: var(--bg-card); border-radius: var(--radius-lg); border: 1px solid var(--border-color); font-size: 13px;">No index instruments found. Add INDEX instruments in Instrument Manager.</div>`;
-            } else {
+                indicesContainer.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-secondary); padding: 16px; background: var(--bg-card); border-radius: var(--radius-lg); border: 1px solid var(--border-color); font-size: 13px;">No index instruments found.</div>`;
+            } else if (indicesContainer.children.length === 0 || indicesContainer.querySelector("div[style*='grid-column']")) {
                 indicesContainer.innerHTML = "";
                 indices.forEach(ind => {
                     const card = document.createElement("div");
@@ -435,7 +435,7 @@ async function loadWatchlist() {
         // ── Render Stocks ───────────────────────────────────────
         tableBody.innerHTML = "";
         if (stocks.length === 0) {
-            tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary); padding: 24px;">No stocks configured.</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary); padding: 24px;">This watchlist does not contain any instruments.</td></tr>`;
         } else {
             stocks.forEach(inst => {
                 const tr = document.createElement("tr");
@@ -444,12 +444,8 @@ async function loadWatchlist() {
                 tr.setAttribute("data-symbol", inst.symbol);
                 tr.setAttribute("data-exchange", inst.exchange);
 
-                const star = inst.is_favorite ? "★" : "☆";
-                const starClass = inst.is_favorite ? "star-active" : "";
-
                 tr.innerHTML = `
                     <td class="stock-symbol font-medium">
-                        <span class="star-icon ${starClass}" onclick="handleDashboardFavoriteToggle(event, '${inst.symbol}', '${inst.exchange}', ${inst.is_favorite})">${star}</span>
                         ${inst.symbol} | ${inst.exchange}
                     </td>
                     <td class="stock-ltp text-right" id="stock-ltp-${inst.symbol}">--</td>
@@ -498,40 +494,87 @@ async function loadWatchlist() {
 }
 
 /**
- * Handles toggling favorite status directly from the Dashboard watchlist.
- * Optimistic UI provides instant star feedback, then loadWatchlist()
- * refreshes both index cards and stock rows with scroll preservation.
+ * Initializes and populates the watchlist selector dropdown
  */
-async function handleDashboardFavoriteToggle(event, symbol, exchange, currentStatus) {
-    event.stopPropagation(); // Prevent triggering stock selection click
-
-    const starEl = event.target;
-    const newStatus = !currentStatus;
-
-    // --- Optimistic UI: flip the star instantly ---
-    starEl.textContent = newStatus ? '★' : '☆';
-    if (newStatus) {
-        starEl.classList.add('star-active');
-    } else {
-        starEl.classList.remove('star-active');
-    }
+async function initializeWatchlistDropdown() {
+    const dropdown = document.getElementById("dashboard-watchlist-select");
+    if (!dropdown) return;
 
     try {
-        await toggleInstrumentFavorite(symbol, exchange, newStatus);
-        if (typeof invalidateInstrumentsCache === "function") {
-            invalidateInstrumentsCache();
+        state.watchlists = await getWatchlists();
+
+        // Add options for each watchlist
+        state.watchlists.forEach(w => {
+            const opt = document.createElement("option");
+            opt.value = w.id;
+            opt.textContent = w.name;
+            dropdown.appendChild(opt);
+        });
+
+        // Restore selected watchlist from localStorage
+        const savedId = localStorage.getItem("dashboard_selected_watchlist_id");
+        if (savedId) {
+            const parsedId = parseInt(savedId, 10);
+            const exists = state.watchlists.some(w => w.id === parsedId);
+            if (exists) {
+                state.selectedWatchlistId = parsedId;
+                dropdown.value = parsedId;
+            } else {
+                // Clear invalid selection
+                localStorage.removeItem("dashboard_selected_watchlist_id");
+                state.selectedWatchlistId = null;
+                dropdown.value = "";
+            }
         }
-        // Refresh dashboard: reloads both index cards and watchlist
-        // with scroll position and selected row preserved.
-        await loadWatchlist();
+
+        // Dropdown switch event listener
+        dropdown.addEventListener("change", async (e) => {
+            const val = e.target.value;
+            if (val) {
+                state.selectedWatchlistId = parseInt(val, 10);
+                localStorage.setItem("dashboard_selected_watchlist_id", val);
+            } else {
+                state.selectedWatchlistId = null;
+                localStorage.removeItem("dashboard_selected_watchlist_id");
+            }
+            await loadWatchlist();
+        });
+
     } catch (err) {
-        console.error(`Failed to toggle favorite from dashboard for ${symbol}:`, err);
-        // --- Revert on failure ---
-        starEl.textContent = currentStatus ? '★' : '☆';
-        if (currentStatus) {
-            starEl.classList.add('star-active');
-        } else {
-            starEl.classList.remove('star-active');
-        }
+        console.error("Failed to load watchlists for dropdown:", err);
     }
 }
+
+/* -------------------------------------------------------------
+   INITIALIZATION CODE
+   ------------------------------------------------------------- */
+
+document.addEventListener('DOMContentLoaded', async () => {
+    // 1. Initial watchlist dropdown load
+    await initializeWatchlistDropdown();
+
+    // 2. Load market instruments lists
+    await loadWatchlist();
+
+    // 3. Setup clock timer
+    updateHeaderClock();
+    setInterval(updateHeaderClock, 1000);
+
+    // 4. Setup sparklines selectors
+    setupTimeframeSelection();
+
+    // 5. Connect Socket streams
+    connectMarketSocket({
+        onOpen: () => updateConnectionStatus('connected'),
+        onClose: () => updateConnectionStatus('disconnected'),
+        onTick: (symbol, tick) => {
+            latestMarketData.set(symbol, tick);
+            if (document.getElementById(`index-card-${symbol}`)) {
+                updateIndexCard(symbol, tick);
+            } else if (document.getElementById(`stock-row-${symbol}`)) {
+                updateStockRow(symbol, tick);
+            }
+            updateMarketStats();
+        }
+    });
+});

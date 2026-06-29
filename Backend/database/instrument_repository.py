@@ -537,22 +537,17 @@ def check_duplicate(symbol: str, exchange: str, token: int) -> dict:
 
 
 
-def get_dashboard_watchlist() -> dict:
+def get_dashboard_watchlist(watchlist_id: int = None) -> dict:
     """
-    Returns the instruments the dashboard should render, with independent
-    favorite/fallback logic for indices and stocks.
-
-    Fallback uses curated priority lists to ensure the default dashboard
-    shows useful, well-known instruments instead of obscure ones.
+    Returns the instruments the dashboard should render, with indices fallback
+    and stocks loaded either from selected watchlist or default fallback market view.
 
     Response structure:
         {
             "indices": [...],
             "stocks":  [...],
-            "view_mode": {
-                "indices": "favorites" | "fallback" | "empty",
-                "stocks":  "favorites" | "fallback" | "empty"
-            }
+            "view_mode": "fallback" | "watchlist" | "empty",
+            "selected_watchlist_id": int | None
         }
     """
     SEARCH_INDICES = [
@@ -564,80 +559,73 @@ def get_dashboard_watchlist() -> dict:
         columns = "id, symbol, token, exchange, name, segment, broker, active, is_favorite, instrument_category, created_at, updated_at"
 
         # ── Indices (strictly category = 'INDEX') ────────────────
-        fav_indices_result = session.execute(text(f"""
-            SELECT {columns}
-            FROM instruments
-            WHERE active = TRUE
-              AND UPPER(instrument_category) = 'INDEX'
-              AND is_favorite = TRUE
-            ORDER BY symbol ASC;
-        """))
-        fav_indices = [dict(row._mapping) for row in fav_indices_result.fetchall()]
-
-        if fav_indices:
-            indices = fav_indices
-            indices_mode = "favorites"
+        # Deprecate favorite index queries; load default priority list directly
+        if SEARCH_INDICES:
+            placeholders = ", ".join([f":idx_{i}" for i in range(len(SEARCH_INDICES))])
+            params = {f"idx_{i}": sym for i, sym in enumerate(SEARCH_INDICES)}
+            fallback_indices_result = session.execute(text(f"""
+                SELECT {columns}
+                FROM instruments
+                WHERE active = TRUE
+                  AND UPPER(instrument_category) = 'INDEX'
+                  AND UPPER(symbol) IN ({placeholders})
+            """), params)
+            fallback_map = {}
+            for row in fallback_indices_result.fetchall():
+                row_dict = dict(row._mapping)
+                fallback_map[row_dict["symbol"].upper()] = row_dict
+            
+            # Assemble in the requested priority order, preferring exact or space-spaced match
+            fallback_indices = []
+            
+            # 1. NIFTY50 / NIFTY 50
+            if "NIFTY50" in fallback_map:
+                fallback_indices.append(fallback_map["NIFTY50"])
+            elif "NIFTY 50" in fallback_map:
+                fallback_indices.append(fallback_map["NIFTY 50"])
+                
+            # 2. BANKNIFTY / NIFTY BANK
+            if "BANKNIFTY" in fallback_map:
+                fallback_indices.append(fallback_map["BANKNIFTY"])
+            elif "NIFTY BANK" in fallback_map:
+                fallback_indices.append(fallback_map["NIFTY BANK"])
+                
+            # 3. SENSEX
+            if "SENSEX" in fallback_map:
+                fallback_indices.append(fallback_map["SENSEX"])
+            
+            indices = fallback_indices
         else:
-            # Fallback: query by priority-ordered default index symbols
-            if SEARCH_INDICES:
-                placeholders = ", ".join([f":idx_{i}" for i in range(len(SEARCH_INDICES))])
-                params = {f"idx_{i}": sym for i, sym in enumerate(SEARCH_INDICES)}
-                fallback_indices_result = session.execute(text(f"""
-                    SELECT {columns}
-                    FROM instruments
-                    WHERE active = TRUE
-                      AND UPPER(instrument_category) = 'INDEX'
-                      AND UPPER(symbol) IN ({placeholders})
-                """), params)
-                fallback_map = {}
-                for row in fallback_indices_result.fetchall():
-                    row_dict = dict(row._mapping)
-                    fallback_map[row_dict["symbol"].upper()] = row_dict
-                
-                # Assemble in the requested priority order, preferring exact or space-spaced match
-                fallback_indices = []
-                
-                # 1. NIFTY50 / NIFTY 50
-                if "NIFTY50" in fallback_map:
-                    fallback_indices.append(fallback_map["NIFTY50"])
-                elif "NIFTY 50" in fallback_map:
-                    fallback_indices.append(fallback_map["NIFTY 50"])
-                    
-                # 2. BANKNIFTY / NIFTY BANK
-                if "BANKNIFTY" in fallback_map:
-                    fallback_indices.append(fallback_map["BANKNIFTY"])
-                elif "NIFTY BANK" in fallback_map:
-                    fallback_indices.append(fallback_map["NIFTY BANK"])
-                    
-                # 3. SENSEX
-                if "SENSEX" in fallback_map:
-                    fallback_indices.append(fallback_map["SENSEX"])
-            else:
-                fallback_indices = []
-
-            if fallback_indices:
-                indices = fallback_indices
-                indices_mode = "fallback"
-            else:
-                indices = []
-                indices_mode = "empty"
+            indices = []
 
         # ── Stocks & Others (strictly category != 'INDEX') ────────
-        fav_stocks_result = session.execute(text(f"""
-            SELECT {columns}
-            FROM instruments
-            WHERE active = TRUE
-              AND UPPER(instrument_category) != 'INDEX'
-              AND is_favorite = TRUE
-            ORDER BY symbol ASC;
-        """))
-        fav_stocks = [dict(row._mapping) for row in fav_stocks_result.fetchall()]
+        stocks = []
+        view_mode = "fallback"
+        resolved_watchlist_id = None
 
-        if fav_stocks:
-            stocks = fav_stocks
-            stocks_mode = "favorites"
+        if watchlist_id is not None:
+            # 1. Verify watchlist exists
+            res = session.execute(text("SELECT id FROM watchlists WHERE id = :id;"), {"id": watchlist_id})
+            watchlist_record = res.fetchone()
+            if not watchlist_record:
+                # Watchlist does not exist. Fallback to empty mode as per instruction 5
+                logger.warning(f"Watchlist with id={watchlist_id} requested but does not exist in DB.")
+                view_mode = "empty"
+                stocks = []
+            else:
+                resolved_watchlist_id = watchlist_id
+                # 2. Query watchlist items JOIN instruments directly
+                stocks_result = session.execute(text(f"""
+                    SELECT i.id, i.symbol, i.token, i.exchange, i.name, i.segment, i.broker, i.active, i.is_favorite, i.instrument_category, i.created_at, i.updated_at
+                    FROM instruments i
+                    JOIN watchlist_items wi ON i.id = wi.instrument_id
+                    WHERE wi.watchlist_id = :watchlist_id
+                    ORDER BY i.symbol ASC;
+                """), {"watchlist_id": watchlist_id})
+                stocks = [dict(row._mapping) for row in stocks_result.fetchall()]
+                view_mode = "watchlist" if stocks else "empty"
         else:
-            # Fallback: query by priority-ordered default stock symbols
+            # Default market view: query by priority-ordered default stock symbols
             if DEFAULT_STOCKS:
                 placeholders = ", ".join([f":stk_{i}" for i in range(len(DEFAULT_STOCKS))])
                 params = {f"stk_{i}": sym for i, sym in enumerate(DEFAULT_STOCKS)}
@@ -653,24 +641,17 @@ def get_dashboard_watchlist() -> dict:
                     row_dict = dict(row._mapping)
                     fallback_map[row_dict["symbol"].upper()] = row_dict
                 # Preserve priority ordering
-                fallback_stocks = [fallback_map[s.upper()] for s in DEFAULT_STOCKS if s.upper() in fallback_map]
-            else:
-                fallback_stocks = []
-
-            if fallback_stocks:
-                stocks = fallback_stocks
-                stocks_mode = "fallback"
+                stocks = [fallback_map[s.upper()] for s in DEFAULT_STOCKS if s.upper() in fallback_map]
+                view_mode = "fallback"
             else:
                 stocks = []
-                stocks_mode = "empty"
+                view_mode = "empty"
 
         return {
             "indices": indices,
             "stocks": stocks,
-            "view_mode": {
-                "indices": indices_mode,
-                "stocks": stocks_mode
-            }
+            "view_mode": view_mode,
+            "selected_watchlist_id": resolved_watchlist_id
         }
 
     except Exception as e:
@@ -678,11 +659,10 @@ def get_dashboard_watchlist() -> dict:
         return {
             "indices": [],
             "stocks": [],
-            "view_mode": {
-                "indices": "empty",
-                "stocks": "empty"
-            }
+            "view_mode": "empty",
+            "selected_watchlist_id": None
         }
+
     finally:
         session.close()
 

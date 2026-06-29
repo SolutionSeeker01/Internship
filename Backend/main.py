@@ -43,6 +43,10 @@ async def lifespan(app: FastAPI):
         from database.instrument_repository import init_db as init_instruments_db
         init_instruments_db()
         logger.info("Instruments database schema successfully initialized.")
+        
+        from database.watchlist_repository import init_db as init_watchlists_db
+        init_watchlists_db()
+        logger.info("Watchlists database schema successfully initialized.")
     except Exception as e:
         logger.error(f"Failed to initialize database schema on startup: {e}")
         raise
@@ -97,6 +101,7 @@ app.add_middleware(
 
 from routers.auth import router as auth_router
 from routers.user_management import router as user_management_router
+from routers.watchlist import router as watchlist_router
 
 # Register the WebSocket route handler
 app.include_router(ws_router)
@@ -106,6 +111,8 @@ app.include_router(instruments_router)
 app.include_router(dashboard_router)
 app.include_router(auth_router)
 app.include_router(user_management_router)
+app.include_router(watchlist_router)
+
 
 
 @app.get("/")

@@ -129,8 +129,12 @@ async function getFavoriteInstruments() {
  * Returns { indices: [], stocks: [], view_mode: { indices: string, stocks: string } }
  * @returns {Promise<object>}
  */
-async function getDashboardWatchlist() {
-    const response = await fetch("http://127.0.0.1:8000/dashboard/watchlist", { cache: 'no-store' });
+async function getDashboardWatchlist(watchlistId = null) {
+    let url = "http://127.0.0.1:8000/dashboard/watchlist";
+    if (watchlistId) {
+        url += `?watchlist_id=${watchlistId}`;
+    }
+    const response = await fetch(url, { cache: 'no-store' });
     if (!response.ok) {
         throw new Error(`Failed to fetch dashboard watchlist: ${response.status}`);
     }
@@ -192,4 +196,97 @@ async function bulkDeleteInstruments(instruments) {
     }
     return await response.json();
 }
+
+/**
+ * Watchlist API wrapper methods
+ */
+async function getWatchlists() {
+    const response = await fetch("http://127.0.0.1:8000/watchlists", { cache: "no-store" });
+    if (!response.ok) {
+        const errorDetail = await response.json();
+        throw new Error(errorDetail.detail || "Failed to fetch watchlists.");
+    }
+    return await response.json();
+}
+
+async function createWatchlist(name) {
+    const response = await fetch("http://127.0.0.1:8000/watchlists", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name })
+    });
+    if (!response.ok) {
+        const errorDetail = await response.json();
+        throw new Error(errorDetail.detail || "Failed to create watchlist.");
+    }
+    return await response.json();
+}
+
+async function renameWatchlist(watchlistId, name) {
+    const response = await fetch(`http://127.0.0.1:8000/watchlists/${watchlistId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name })
+    });
+    if (!response.ok) {
+        const errorDetail = await response.json();
+        throw new Error(errorDetail.detail || "Failed to rename watchlist.");
+    }
+    return await response.json();
+}
+
+async function deleteWatchlist(watchlistId) {
+    const response = await fetch(`http://127.0.0.1:8000/watchlists/${watchlistId}`, {
+        method: "DELETE"
+    });
+    if (!response.ok) {
+        const errorDetail = await response.json();
+        throw new Error(errorDetail.detail || "Failed to delete watchlist.");
+    }
+    return await response.json();
+}
+
+/**
+ * Fetch all items assigned to a watchlist.
+ */
+async function getWatchlistItems(watchlistId) {
+    const response = await fetch(`http://127.0.0.1:8000/watchlists/${watchlistId}/items`, { cache: "no-store" });
+    if (!response.ok) {
+        const errorDetail = await response.json();
+        throw new Error(errorDetail.detail || "Failed to fetch watchlist items.");
+    }
+    return await response.json();
+}
+
+/**
+ * Assigns an instrument into a watchlist.
+ */
+async function addInstrumentToWatchlist(watchlistId, instrumentId) {
+    const response = await fetch(`http://127.0.0.1:8000/watchlists/${watchlistId}/items`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ instrument_id: instrumentId })
+    });
+    if (!response.ok) {
+        const errorDetail = await response.json();
+        throw new Error(errorDetail.detail || "Failed to add instrument to watchlist.");
+    }
+    return await response.json();
+}
+
+/**
+ * Removes an instrument from a watchlist.
+ */
+async function removeInstrumentFromWatchlist(watchlistId, instrumentId) {
+    const response = await fetch(`http://127.0.0.1:8000/watchlists/${watchlistId}/items/${instrumentId}`, {
+        method: "DELETE"
+    });
+    if (!response.ok) {
+        const errorDetail = await response.json();
+        throw new Error(errorDetail.detail || "Failed to remove instrument from watchlist.");
+    }
+    return await response.json();
+}
+
+
 
