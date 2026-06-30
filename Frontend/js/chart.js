@@ -10,8 +10,8 @@ console.info("[Chart] Module loaded.");
 let chart;
 /** @type {any} */
 let candleSeries;
-let selectedSymbol = "RELIANCE";
-let selectedExchange = "NSE";
+let selectedSymbol = "";
+let selectedExchange = "";
 let selectedInterval = "minute";
 let currentCandles = [];
 let lastCumulativeVolume = null;
@@ -132,6 +132,9 @@ function initializeChart() {
     window.addEventListener("resize", () => {
         chart.resize(container.clientWidth || 800, 500);
     });
+
+    // Show empty state message on initial load
+    clearChart();
 }
 
 async function loadCandles(symbol, exchange = null, interval = selectedInterval) {

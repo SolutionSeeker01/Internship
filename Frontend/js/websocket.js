@@ -32,7 +32,8 @@ function handleSnapshot(data) {
         latestMarketData.set(symbol, marketData);
         if (document.getElementById(`index-card-${symbol}`)) {
             updateIndexCard(symbol, marketData);
-        } else if (document.getElementById(`stock-row-${symbol}`)) {
+        }
+        if (document.getElementById(`stock-row-${symbol}`)) {
             updateStockRow(symbol, marketData);
         }
     }
@@ -55,7 +56,8 @@ function handleUpdate(data) {
 
     if (document.getElementById(`index-card-${symbol}`)) {
         updateIndexCard(symbol, data);
-    } else if (document.getElementById(`stock-row-${symbol}`)) {
+    }
+    if (document.getElementById(`stock-row-${symbol}`)) {
         updateStockRow(symbol, data);
         updateMarketStats();
     }

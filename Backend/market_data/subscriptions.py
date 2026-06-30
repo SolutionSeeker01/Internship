@@ -33,13 +33,23 @@ def reload_instruments() -> None:
     
     session = SessionLocal()
     try:
-        # 1. Fetch dynamic indices (UPPER(instrument_category) = 'INDEX')
-        index_sql = text("""
+        # 1. Fetch dynamic indices (limit default subscriptions only to canonical ones)
+        HARDCODED_INDICES = [
+            "NIFTY50",
+            "NIFTY 50",
+            "BANKNIFTY",
+            "NIFTY BANK",
+            "SENSEX"
+        ]
+        idx_placeholders = ", ".join([f":idx_{i}" for i in range(len(HARDCODED_INDICES))])
+        idx_params = {f"idx_{i}": sym for i, sym in enumerate(HARDCODED_INDICES)}
+        index_sql = text(f"""
             SELECT id, symbol, token, exchange, name, segment, broker
             FROM instruments
-            WHERE UPPER(instrument_category) = 'INDEX';
+            WHERE UPPER(symbol) IN ({idx_placeholders})
+              AND UPPER(instrument_category) = 'INDEX';
         """)
-        index_rows = session.execute(index_sql).fetchall()
+        index_rows = session.execute(index_sql, idx_params).fetchall()
         
         # 2. Fetch default dashboard fallback stocks
         default_stock_rows = []

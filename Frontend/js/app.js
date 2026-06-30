@@ -36,12 +36,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     
     
-    // 5. Initialize Chart and Load Default Symbol Candles
+    // 5. Initialize Chart (empty state — candles load on user click)
     try {
         initializeChart();
-        if (typeof selectedSymbol !== "undefined" && selectedSymbol) {
-            loadCandles(selectedSymbol);
-        }
     } catch (e) {
         console.error("Failed to initialize chart:", e);
     }

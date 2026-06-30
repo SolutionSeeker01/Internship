@@ -362,28 +362,12 @@ async function loadWatchlist() {
 
         TOTAL_STOCKS_COUNT = stocks.length;
 
-        // ── Empty State ────────────────────────────────
-        if (view_mode === "empty") {
-            if (notification) {
-                notification.textContent = "This watchlist does not contain any instruments.";
-                notification.style.display = "block";
-            }
-            if (indicesContainer && indicesContainer.children.length === 0) {
-                indicesContainer.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-secondary); padding: 16px; background: var(--bg-card); border-radius: var(--radius-lg); border: 1px solid var(--border-color); font-size: 13px;">No index instruments found.</div>`;
-            }
-            tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary); padding: 24px;">This watchlist does not contain any instruments.</td></tr>`;
-
-            // Clear chart gracefully
-            selectedSymbol = "";
-            if (typeof clearChart === "function") {
-                clearChart();
-            }
-            return;
-        }
-
         // ── Banners ────────────────────────────────
         if (notification) {
-            if (view_mode === "fallback") {
+            if (view_mode === "empty") {
+                notification.textContent = "This watchlist does not contain any instruments.";
+                notification.style.display = "block";
+            } else if (view_mode === "fallback") {
                 notification.textContent = "Showing Default Market View";
                 notification.style.display = "block";
             } else {
@@ -394,7 +378,7 @@ async function loadWatchlist() {
         // ── Render Indices ──────────────────────────────────────
         if (indicesContainer) {
             if (indices.length === 0) {
-                indicesContainer.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-secondary); padding: 16px; background: var(--bg-card); border-radius: var(--radius-lg); border: 1px solid var(--border-color); font-size: 13px;">No indices available.</div>`;
+                indicesContainer.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-secondary); padding: 16px; background: var(--bg-card); border-radius: var(--radius-lg); border: 1px solid var(--border-color); font-size: 13px;">No index instruments found.</div>`;
             } else {
                 indicesContainer.innerHTML = "";
                 indices.forEach(ind => {
@@ -437,8 +421,14 @@ async function loadWatchlist() {
 
         // ── Render Stocks ───────────────────────────────────────
         tableBody.innerHTML = "";
-        if (stocks.length === 0) {
+        if (view_mode === "empty" || stocks.length === 0) {
             tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary); padding: 24px;">This watchlist does not contain any instruments.</td></tr>`;
+            
+            // Clear chart gracefully
+            selectedSymbol = "";
+            if (typeof clearChart === "function") {
+                clearChart();
+            }
         } else {
             stocks.forEach(inst => {
                 const tr = document.createElement("tr");
@@ -608,7 +598,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             latestMarketData.set(symbol, tick);
             if (document.getElementById(`index-card-${symbol}`)) {
                 updateIndexCard(symbol, tick);
-            } else if (document.getElementById(`stock-row-${symbol}`)) {
+            }
+            if (document.getElementById(`stock-row-${symbol}`)) {
                 updateStockRow(symbol, tick);
             }
             updateMarketStats();
