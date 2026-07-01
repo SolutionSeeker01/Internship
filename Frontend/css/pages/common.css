@@ -97,6 +97,10 @@ body {
     gap: 12px;
 }
 
+.app-header .header-right #nav-btn-logout {
+    display: none !important;
+}
+
 .header-icon {
     color: var(--accent-blue);
 }
@@ -172,37 +176,200 @@ body {
 }
 
 /* =====================================================
-   HEADER NAVIGATION TABS
+   COLLAPSIBLE LEFT SIDEBAR LAYOUT
    ===================================================== */
-.header-nav {
+body {
     display: flex;
-    gap: 8px;
-    margin-left: 32px;
+    flex-direction: column;
+    overflow-x: hidden;
 }
 
-.nav-btn {
+/* Sidebar Toggle Menu Button */
+.sidebar-toggle-btn {
     background: none;
     border: none;
-    color: #9ca3af;
+    color: #ffffff;
     cursor: pointer;
-    font-size: 13px;
-    font-weight: 600;
-    padding: 8px 14px;
-    border-radius: var(--radius-sm);
-    transition: all 0.2s ease;
-    display: inline-flex;
+    padding: 8px;
+    margin-right: 8px;
+    display: flex;
     align-items: center;
     justify-content: center;
+    border-radius: var(--radius-sm);
+    transition: background-color 0.2s ease;
 }
-
-.nav-btn:hover {
-    color: #ffffff;
+.sidebar-toggle-btn:hover {
     background-color: rgba(255, 255, 255, 0.08);
 }
+.sidebar-toggle-btn svg {
+    width: 20px;
+    height: 20px;
+}
 
-.nav-btn.active {
-    color: #ffffff !important;
-    background-color: var(--accent-blue) !important;
+/* Base structural layout wrapper */
+.app-wrapper {
+    display: flex;
+    flex: 1;
+    width: 100%;
+    position: relative;
+}
+
+.main-content {
+    flex: 1;
+    margin-left: 280px;
+    transition: margin-left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    min-width: 0; /* Prevents flex children from breaking layout */
+}
+.sidebar-collapsed .main-content {
+    margin-left: 80px;
+}
+
+/* Sidebar Container Styles */
+.app-sidebar {
+    position: fixed;
+    top: 60px; /* Below header */
+    left: 0;
+    bottom: 0;
+    width: 280px;
+    background-color: #0f172a; /* Premium dark background */
+    border-right: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: var(--space-md) 12px;
+    z-index: 90;
+    transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow-x: hidden;
+}
+.sidebar-collapsed .app-sidebar {
+    width: 80px;
+}
+
+/* Brand Section inside Sidebar */
+.sidebar-brand-section {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px 24px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    margin-bottom: var(--space-md);
+    color: #ffffff;
+    transition: opacity 0.2s ease;
+}
+.sidebar-collapsed .sidebar-brand-section {
+    opacity: 0;
+    pointer-events: none;
+    height: 0;
+    padding: 0;
+    margin-bottom: 0;
+    border-bottom: none;
+}
+
+.sidebar-brand-text {
+    font-size: 15px;
+    font-weight: 700;
+    white-space: nowrap;
+    letter-spacing: -0.2px;
+}
+
+/* Navigation items container list */
+.sidebar-menu {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+}
+
+/* General Navigation Link Button */
+.sidebar-nav-btn {
+    width: 100%;
+    background: none;
+    border: none;
+    color: #94a3b8; /* Cool gray */
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 12px 14px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    text-align: left;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.sidebar-nav-btn svg {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    stroke: currentColor;
+    transition: color 0.2s ease;
+}
+
+.sidebar-nav-btn span.nav-label {
+    white-space: nowrap;
+    transition: opacity 0.2s ease;
+    opacity: 1;
+}
+.sidebar-collapsed .sidebar-nav-btn span.nav-label {
+    opacity: 0;
+    pointer-events: none;
+    width: 0;
+    display: inline-block;
+}
+
+.sidebar-nav-btn:hover {
+    color: #ffffff;
+    background-color: rgba(255, 255, 255, 0.06);
+}
+
+.sidebar-nav-btn.active {
+    color: #3b82f6 !important; /* Premium Accent Blue color */
+    background-color: rgba(59, 130, 246, 0.1) !important;
+    font-weight: 600;
+}
+
+/* Bottom Actions section */
+.sidebar-bottom {
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding-top: var(--space-md);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+/* Tooltip overlay styling for Collapsed Navigation Icons */
+.sidebar-nav-btn[data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: 85px;
+    top: 50%;
+    transform: translateY(-50%) scale(0.9);
+    background-color: #1e293b;
+    color: #f8fafc;
+    padding: 6px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 1000;
+}
+
+.sidebar-collapsed .sidebar-nav-btn[data-tooltip]:hover::after {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+}
+
+/* Adjustment to make header simpler (remove nav bar tabs from top) */
+.header-nav {
+    display: none !important;
 }
 
 
