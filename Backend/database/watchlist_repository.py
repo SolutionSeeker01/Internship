@@ -21,9 +21,11 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS watchlist_items (
                 id SERIAL PRIMARY KEY,
                 watchlist_id INTEGER NOT NULL REFERENCES watchlists(id) ON DELETE CASCADE,
-                instrument_id INTEGER NOT NULL REFERENCES instruments(id) ON DELETE CASCADE,
+                instrument_id INTEGER,
+                symbol VARCHAR(50) NOT NULL,
+                exchange VARCHAR(20) NOT NULL,
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(watchlist_id, instrument_id)
+                UNIQUE(watchlist_id, symbol, exchange)
             );
         """))
         session.commit()
@@ -135,15 +137,17 @@ def delete_watchlist(watchlist_id: int) -> bool:
 def get_watchlist_items(watchlist_id: int) -> list:
     """
     Retrieves all instruments belonging to the selected watchlist, sorted alphabetically by symbol ASC.
+    Performs a LEFT JOIN to ensure missing/unavailable catalog items are not silently discarded.
     """
     session = SessionLocal()
     try:
         result = session.execute(text("""
-            SELECT i.id, i.symbol, i.exchange, i.name, i.token
-            FROM instruments i
-            JOIN watchlist_items wi ON i.id = wi.instrument_id
+            SELECT wi.id, wi.symbol, wi.exchange, i.name, i.token,
+                   (CASE WHEN i.id IS NOT NULL THEN true ELSE false END) as available
+            FROM watchlist_items wi
+            LEFT JOIN instruments i ON UPPER(wi.symbol) = UPPER(i.symbol) AND UPPER(wi.exchange) = UPPER(i.exchange)
             WHERE wi.watchlist_id = :watchlist_id
-            ORDER BY i.symbol ASC;
+            ORDER BY wi.symbol ASC;
         """), {"watchlist_id": watchlist_id})
         rows = result.fetchall()
         return [dict(row._mapping) for row in rows]
@@ -154,41 +158,78 @@ def get_watchlist_items(watchlist_id: int) -> list:
         session.close()
 
 
-def add_instrument_to_watchlist(watchlist_id: int, instrument_id: int) -> bool:
+def add_instrument_to_watchlist(watchlist_id: int, symbol_or_id: any, exchange: str = None, instrument_id: int = None) -> bool:
     """
-    Adds an instrument to the watchlist.
+    Adds an instrument to the watchlist. Supports both legacy signature (watchlist_id, instrument_id)
+    and new decoupled signature (watchlist_id, symbol, exchange, instrument_id).
     """
     session = SessionLocal()
     try:
+        if isinstance(symbol_or_id, int):
+            inst_id = symbol_or_id
+            from database.instrument_repository import get_instrument_by_id
+            inst = get_instrument_by_id(inst_id)
+            if not inst:
+                logger.error(f"Cannot resolve legacy instrument_id {inst_id} for watchlist addition.")
+                return False
+            symbol = inst["symbol"]
+            exch = inst["exchange"]
+            instrument_id = inst_id
+        else:
+            symbol = symbol_or_id
+            exch = exchange
+
         session.execute(text("""
-            INSERT INTO watchlist_items (watchlist_id, instrument_id)
-            VALUES (:watchlist_id, :instrument_id);
-        """), {"watchlist_id": watchlist_id, "instrument_id": instrument_id})
+            INSERT INTO watchlist_items (watchlist_id, symbol, exchange, instrument_id)
+            VALUES (:watchlist_id, :symbol, :exchange, :instrument_id);
+        """), {
+            "watchlist_id": watchlist_id,
+            "symbol": symbol.upper().strip(),
+            "exchange": exch.upper().strip() if exch else "NSE",
+            "instrument_id": instrument_id
+        })
         session.commit()
         return True
     except Exception as e:
         session.rollback()
-        logger.error(f"Error adding instrument {instrument_id} to watchlist {watchlist_id}: {e}")
+        logger.error(f"Error adding instrument to watchlist: {e}")
         return False
     finally:
         session.close()
 
 
-def remove_instrument_from_watchlist(watchlist_id: int, instrument_id: int) -> bool:
+def remove_instrument_from_watchlist(watchlist_id: int, symbol_or_id: any, exchange: str = None) -> bool:
     """
-    Removes an instrument from the watchlist.
+    Removes an instrument from the watchlist. Supports both legacy signature (watchlist_id, instrument_id)
+    and new decoupled signature (watchlist_id, symbol, exchange).
     """
     session = SessionLocal()
     try:
+        if isinstance(symbol_or_id, int):
+            wi = get_watchlist_item_by_id_or_instrument(watchlist_id, symbol_or_id)
+            if not wi:
+                return False
+            symbol = wi["symbol"]
+            exch = wi["exchange"]
+        else:
+            symbol = symbol_or_id
+            exch = exchange
+
         result = session.execute(text("""
             DELETE FROM watchlist_items
-            WHERE watchlist_id = :watchlist_id AND instrument_id = :instrument_id;
-        """), {"watchlist_id": watchlist_id, "instrument_id": instrument_id})
+            WHERE watchlist_id = :watchlist_id 
+              AND UPPER(symbol) = UPPER(:symbol) 
+              AND UPPER(exchange) = UPPER(:exchange);
+        """), {
+            "watchlist_id": watchlist_id,
+            "symbol": symbol.upper().strip(),
+            "exchange": exch.upper().strip() if exch else "NSE"
+        })
         session.commit()
         return result.rowcount > 0
     except Exception as e:
         session.rollback()
-        logger.error(f"Error removing instrument {instrument_id} from watchlist {watchlist_id}: {e}")
+        logger.error(f"Error removing instrument from watchlist: {e}")
         return False
     finally:
         session.close()
@@ -213,23 +254,59 @@ def get_watchlist_items_count(watchlist_id: int) -> int:
         session.close()
 
 
-def check_instrument_in_watchlist(watchlist_id: int, instrument_id: int) -> bool:
+def check_instrument_in_watchlist(watchlist_id: int, symbol_or_id: any, exchange: str = None) -> bool:
     """
-    Checks if an instrument is already present inside a watchlist.
+    Checks if an instrument is already present inside a watchlist. Supports both legacy signature (watchlist_id, instrument_id)
+    and new decoupled signature (watchlist_id, symbol, exchange).
     """
     session = SessionLocal()
     try:
+        if isinstance(symbol_or_id, int):
+            wi = get_watchlist_item_by_id_or_instrument(watchlist_id, symbol_or_id)
+            return wi is not None
+        else:
+            symbol = symbol_or_id
+            exch = exchange
+
         result = session.execute(text("""
             SELECT EXISTS(
                 SELECT 1
                 FROM watchlist_items
-                WHERE watchlist_id = :watchlist_id AND instrument_id = :instrument_id
+                WHERE watchlist_id = :watchlist_id 
+                  AND UPPER(symbol) = UPPER(:symbol) 
+                  AND UPPER(exchange) = UPPER(:exchange)
             );
-        """), {"watchlist_id": watchlist_id, "instrument_id": instrument_id})
+        """), {
+            "watchlist_id": watchlist_id,
+            "symbol": symbol.upper().strip(),
+            "exchange": exch.upper().strip() if exch else "NSE"
+        })
         return result.scalar() or False
     except Exception as e:
         logger.error(f"Error checking duplicate for watchlist {watchlist_id}: {e}")
         return False
+    finally:
+        session.close()
+
+
+def get_watchlist_item_by_id_or_instrument(watchlist_id: int, identifier: int) -> dict:
+    """
+    Retrieves a single watchlist item by database primary key ID or instrument_id.
+    """
+    session = SessionLocal()
+    try:
+        res = session.execute(text("""
+            SELECT id, watchlist_id, instrument_id, symbol, exchange
+            FROM watchlist_items
+            WHERE watchlist_id = :watchlist_id
+              AND (id = :identifier OR instrument_id = :identifier)
+            LIMIT 1;
+        """), {"watchlist_id": watchlist_id, "identifier": identifier})
+        row = res.fetchone()
+        return dict(row._mapping) if row else None
+    except Exception as e:
+        logger.error(f"Error finding watchlist item: {e}")
+        return None
     finally:
         session.close()
 

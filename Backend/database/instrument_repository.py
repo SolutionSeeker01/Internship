@@ -452,13 +452,14 @@ def get_dashboard_watchlist(watchlist_id: int = None) -> dict:
                 stocks = []
             else:
                 resolved_watchlist_id = watchlist_id
-                # 2. Query watchlist items JOIN instruments directly
+                # 2. Query watchlist items LEFT JOIN instruments using symbol and exchange
                 stocks_result = session.execute(text(f"""
-                    SELECT i.id, i.symbol, i.token, i.exchange, i.name, i.segment, i.broker, i.instrument_category, i.created_at, i.updated_at
-                    FROM instruments i
-                    JOIN watchlist_items wi ON i.id = wi.instrument_id
+                    SELECT i.id, wi.symbol, i.token, wi.exchange, i.name, i.segment, i.broker, i.instrument_category, i.created_at, i.updated_at
+                    FROM watchlist_items wi
+                    LEFT JOIN instruments i ON UPPER(wi.symbol) = UPPER(i.symbol) AND UPPER(wi.exchange) = UPPER(i.exchange)
                     WHERE wi.watchlist_id = :watchlist_id
-                    ORDER BY i.symbol ASC;
+                      AND i.id IS NOT NULL
+                    ORDER BY wi.symbol ASC;
                 """), {"watchlist_id": watchlist_id})
                 stocks = [dict(row._mapping) for row in stocks_result.fetchall()]
                 view_mode = "watchlist" if stocks else "empty"
@@ -541,6 +542,28 @@ def get_instrument_by_symbol_exchange(symbol: str, exchange: str) -> dict:
         return None
     except Exception as e:
         logger.error(f"Error fetching instrument {symbol} on {exchange}: {e}")
+        return None
+    finally:
+        session.close()
+
+
+def get_instrument_by_id(instrument_id: int) -> dict:
+    """
+    Retrieves a single instrument by database ID.
+    """
+    session = SessionLocal()
+    try:
+        res = session.execute(text("""
+            SELECT id, symbol, token, exchange, name, segment, broker, instrument_category
+            FROM instruments
+            WHERE id = :id;
+        """), {"id": instrument_id})
+        row = res.fetchone()
+        if row:
+            return dict(row._mapping)
+        return None
+    except Exception as e:
+        logger.error(f"Error fetching instrument by id {instrument_id}: {e}")
         return None
     finally:
         session.close()

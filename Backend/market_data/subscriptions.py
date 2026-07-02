@@ -68,7 +68,7 @@ def reload_instruments() -> None:
         watchlist_sql = text("""
             SELECT i.id, i.symbol, i.token, i.exchange, i.name, i.segment, i.broker
             FROM instruments i
-            JOIN watchlist_items wi ON i.id = wi.instrument_id;
+            JOIN watchlist_items wi ON UPPER(i.symbol) = UPPER(wi.symbol) AND UPPER(i.exchange) = UPPER(wi.exchange);
         """)
         watchlist_rows = session.execute(watchlist_sql).fetchall()
 

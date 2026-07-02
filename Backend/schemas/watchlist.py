@@ -26,8 +26,9 @@ class WatchlistItemResponse(BaseModel):
     id: int
     symbol: str
     exchange: str
-    name: str
-    token: int
+    name: Optional[str] = None
+    token: Optional[int] = None
+    available: bool = True
 
     class Config:
         from_attributes = True

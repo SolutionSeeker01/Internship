@@ -11,8 +11,10 @@ from database.watchlist_repository import (
     add_instrument_to_watchlist as db_add_item,
     remove_instrument_from_watchlist as db_remove_item,
     get_watchlist_items_count as db_get_items_count,
-    check_instrument_in_watchlist as db_check_item_exists
+    check_instrument_in_watchlist as db_check_item_exists,
+    get_watchlist_item_by_id_or_instrument as db_get_item_by_id_or_instrument
 )
+from database.instrument_repository import get_instrument_by_id as db_get_instrument_by_id
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -90,6 +92,14 @@ def add_watchlist_item(id: int = Path(..., gt=0), payload: WatchlistItemAdd = Bo
     if not watchlist:
         raise HTTPException(status_code=404, detail="Watchlist not found.")
     
+    # Resolve symbol and exchange from catalog instrument
+    inst = db_get_instrument_by_id(payload.instrument_id)
+    if not inst:
+        raise HTTPException(status_code=404, detail="Instrument not found in catalog.")
+    
+    symbol = inst["symbol"]
+    exchange = inst["exchange"]
+
     # 1. Enforce max limit of 100
     current_count = db_get_items_count(id)
     if current_count >= 100:
@@ -98,15 +108,15 @@ def add_watchlist_item(id: int = Path(..., gt=0), payload: WatchlistItemAdd = Bo
             detail="Watchlist already contains the maximum number of instruments (100)."
         )
     
-    # 2. Prevent duplicate entries
-    exists = db_check_item_exists(id, payload.instrument_id)
+    # 2. Prevent duplicate entries using symbol + exchange
+    exists = db_check_item_exists(id, symbol, exchange)
     if exists:
         raise HTTPException(
             status_code=400,
             detail="Instrument already exists in this watchlist."
         )
         
-    success = db_add_item(id, payload.instrument_id)
+    success = db_add_item(id, symbol, exchange, payload.instrument_id)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to add instrument to watchlist.")
     
@@ -125,14 +135,27 @@ def add_watchlist_item(id: int = Path(..., gt=0), payload: WatchlistItemAdd = Bo
 @router.delete("/{id}/items/{instrument_id}")
 def remove_watchlist_item(id: int = Path(..., gt=0), instrument_id: int = Path(..., gt=0)):
     """
-    Remove an instrument from a watchlist.
+    Remove an instrument from a watchlist using symbol and exchange.
     """
     logger.info(f"DELETE /watchlists/{id}/items/{instrument_id}")
     watchlist = db_get_by_id(id)
     if not watchlist:
         raise HTTPException(status_code=404, detail="Watchlist not found.")
-        
-    success = db_remove_item(id, instrument_id)
+    
+    # Try resolving symbol and exchange from the watchlist item itself (handles missing catalog instruments)
+    wi_item = db_get_item_by_id_or_instrument(id, instrument_id)
+    if wi_item:
+        symbol = wi_item["symbol"]
+        exchange = wi_item["exchange"]
+    else:
+        # Fallback to catalog query
+        inst = db_get_instrument_by_id(instrument_id)
+        if not inst:
+            raise HTTPException(status_code=404, detail="Instrument not found in this watchlist or catalog.")
+        symbol = inst["symbol"]
+        exchange = inst["exchange"]
+
+    success = db_remove_item(id, symbol, exchange)
     if not success:
         raise HTTPException(status_code=404, detail="Instrument not found in this watchlist.")
         
