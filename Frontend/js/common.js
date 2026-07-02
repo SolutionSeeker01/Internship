@@ -33,6 +33,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const footer = document.querySelector('.app-footer');
 
     if (header && mainEl) {
+        // Set dynamic active page title in the top navbar header h1
+        const headerTitleEl = header.querySelector('h1');
+        if (headerTitleEl) {
+            let activeTitle = "Dashboard"; // Default fallback
+            if (pageName === "instrument-manager.html") {
+                activeTitle = "Instrument Manager";
+            } else if (pageName === "watchlists.html") {
+                activeTitle = "Watchlists";
+            } else if (pageName === "user-management.html") {
+                activeTitle = "User Management";
+            }
+            headerTitleEl.textContent = activeTitle;
+        }
+
         // Create Sidebar Menu Toggle button next to logo header title
         const headerLeft = header.querySelector('.header-left');
         if (headerLeft) {
@@ -65,19 +79,6 @@ document.addEventListener('DOMContentLoaded', () => {
         // Construct Sidebar content dynamically
         const sidebar = document.createElement('aside');
         sidebar.className = 'app-sidebar';
-
-        // Set up brand header inside sidebar
-        const brandDiv = document.createElement('div');
-        brandDiv.className = 'sidebar-brand-section';
-        brandDiv.innerHTML = `
-            <svg class="header-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="18" y1="20" x2="18" y2="10"></line>
-                <line x1="12" y1="20" x2="12" y2="4"></line>
-                <line x1="6" y1="20" x2="6" y2="14"></line>
-            </svg>
-            <span class="sidebar-brand-text">Market Dashboard</span>
-        `;
-        sidebar.appendChild(brandDiv);
 
         // Sidebar Navigation links menu lists
         const menuList = document.createElement('ul');
