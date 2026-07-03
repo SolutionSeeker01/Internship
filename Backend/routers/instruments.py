@@ -277,14 +277,6 @@ def add_instrument(payload: InstrumentCreate, current_user: User = Depends(get_c
         reload_instruments()
         from market_data.kite_client import update_subscriptions
         update_subscriptions()
-        
-        # Sync to universe cache
-        from market_data.universe import add_symbol_to_universe
-        add_symbol_to_universe(
-            symbol=str(matched_record.get("tradingsymbol") or payload.symbol),
-            exchange=str(matched_record.get("exchange") or payload.exchange),
-            token=int(matched_record.get("instrument_token") or payload.token)
-        )
     except Exception as e:
         logger.warning(f"Failed to reload instrument cache or update subscriptions: {e}")
 
@@ -308,10 +300,6 @@ def clear_all_instruments():
         reload_instruments()
         from market_data.kite_client import update_subscriptions
         update_subscriptions()
-        
-        # Clear universe cache
-        from market_data.universe import clear_universe_cache
-        clear_universe_cache()
     except Exception as e:
         logger.warning(f"Failed to reload instrument cache or update subscriptions after clearing all: {e}")
 
@@ -337,10 +325,6 @@ def delete_instrument(symbol: str = Path(..., min_length=1), exchange: str = Non
         reload_instruments()
         from market_data.kite_client import update_subscriptions
         update_subscriptions()
-        
-        # Remove from universe cache
-        from market_data.universe import remove_symbol_from_universe
-        remove_symbol_from_universe(symbol_upper)
     except Exception as e:
         logger.warning(f"Failed to reload instrument cache or update subscriptions: {e}")
 

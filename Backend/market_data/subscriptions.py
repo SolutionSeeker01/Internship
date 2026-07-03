@@ -142,7 +142,6 @@ def reload_instruments() -> None:
             f"    Watchlist instruments subscribed: {watchlist_count}\n"
             f"    Total unique subscriptions: {len(unique_instruments)}"
         )
-        rebuild_universe_cache()
     except Exception as e:
         logger.error(f"Error loading instruments from database: {e}")
         raise
@@ -176,7 +175,6 @@ def load_instruments() -> None:
     Loads subscription universe instruments into RAM. Typically called once at startup.
     """
     reload_instruments()
-    rebuild_universe_cache()
 
 
 def get_tokens() -> List[int]:
