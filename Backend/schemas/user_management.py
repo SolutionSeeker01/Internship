@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field, field_validator, ConfigDict, EmailStr, model_validator
 from models.user import UserRole
 import re
+from typing import Optional
 
 class UserCreateRequest(BaseModel):
     """
@@ -151,5 +152,6 @@ class UserManagementResponse(BaseModel):
     fullname: str
     role: str
     is_active: bool
+    email_warning: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)

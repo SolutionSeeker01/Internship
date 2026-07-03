@@ -7,6 +7,7 @@ from models.user import User, UserRole
 from dependencies.auth import get_current_user
 from security.password import hash_password
 from schemas.user_management import UserCreateRequest, UserStatusUpdateRequest, UserManagementResponse, UserUpdateRequest, UserPasswordResetRequest
+from services.email_service import send_account_created_email, send_password_reset_email
 
 router = APIRouter(prefix="/users", tags=["User Management"])
 
@@ -72,6 +73,18 @@ async def create_user(
         db.add(new_user)
         db.commit()
         db.refresh(new_user)
+        
+        # Attempt welcome email delivery
+        email_sent = send_account_created_email(
+            to_email=new_user.email,
+            username=new_user.username,
+            fullname=new_user.fullname,
+            role=new_user.role.value if hasattr(new_user.role, 'value') else str(new_user.role),
+            password=payload.password
+        )
+        if not email_sent:
+            new_user.email_warning = "Email notification delivery failed."
+            
         return new_user
     except Exception:
         db.rollback()
@@ -189,7 +202,23 @@ async def reset_password(
 
     try:
         db.commit()
-        return {"message": "Password reset successful"}
+        
+        # Attempt password reset email delivery
+        email_sent = send_password_reset_email(
+            to_email=user.email,
+            username=user.username,
+            fullname=user.fullname,
+            role=user.role.value if hasattr(user.role, 'value') else str(user.role),
+            password=payload.password
+        )
+        
+        if not email_sent:
+            return {
+                "message": "Password reset successful.",
+                "warning": "Email notification delivery failed."
+            }
+            
+        return {"message": "Password reset successful."}
     except Exception:
         db.rollback()
         raise HTTPException(
