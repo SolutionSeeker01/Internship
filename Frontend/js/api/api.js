@@ -17,7 +17,15 @@ async function getCandles(symbol, interval, limit = 100, exchange = null) {
     if (exchange) {
         url += `&exchange=${exchange}`;
     }
-    const response = await fetch(url, { cache: 'no-store' });
+    const accessToken = localStorage.getItem('access_token');
+    const headers = {};
+    if (accessToken) {
+        headers['Authorization'] = `Bearer ${accessToken}`;
+    }
+    const response = await fetch(url, { 
+        cache: 'no-store',
+        headers: headers
+    });
     if (!response.ok) {
         throw new Error(`Failed to fetch candles: ${response.status}`);
     }
@@ -57,11 +65,14 @@ async function searchInstruments(q, limit = 20) {
  * @returns {Promise<object>}
  */
 async function createInstrument(instrumentData) {
+    const accessToken = localStorage.getItem('access_token');
+    const headers = { "Content-Type": "application/json" };
+    if (accessToken) {
+        headers['Authorization'] = `Bearer ${accessToken}`;
+    }
     const response = await fetch(`${window.API_BASE_URL}/instruments`, {
         method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
+        headers: headers,
         body: JSON.stringify(instrumentData)
     });
     if (!response.ok) {
@@ -78,8 +89,14 @@ async function createInstrument(instrumentData) {
  */
 async function deleteInstrument(symbol, exchange) {
     if (!exchange) throw new Error("Exchange is mandatory to delete an instrument.");
+    const accessToken = localStorage.getItem('access_token');
+    const headers = {};
+    if (accessToken) {
+        headers['Authorization'] = `Bearer ${accessToken}`;
+    }
     const response = await fetch(`${window.API_BASE_URL}/instruments/${symbol}?exchange=${encodeURIComponent(exchange)}`, {
-        method: "DELETE"
+        method: "DELETE",
+        headers: headers
     });
     if (!response.ok) {
         const errorDetail = await response.json();
@@ -114,11 +131,14 @@ async function getDashboardWatchlist(watchlistId = null) {
  * @returns {Promise<object>}
  */
 async function syncInstruments(exchanges, segments) {
+    const accessToken = localStorage.getItem('access_token');
+    const headers = { "Content-Type": "application/json" };
+    if (accessToken) {
+        headers['Authorization'] = `Bearer ${accessToken}`;
+    }
     const response = await fetch(`${window.API_BASE_URL}/instruments/sync`, {
         method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
+        headers: headers,
         body: JSON.stringify({ exchanges, segments })
     });
     if (!response.ok) {

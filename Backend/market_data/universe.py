@@ -56,6 +56,17 @@ def load_universe_cache() -> None:
         _UNIVERSE_CACHE = {}
         logger.warning("Universe cache not found. Symbol validation fallback mode enabled.")
 
+def persist_universe_cache() -> None:
+    """
+    Saves the current in-memory _UNIVERSE_CACHE state to the persisted JSON file.
+    """
+    try:
+        with open(CACHE_FILE_PATH, "w") as f:
+            json.dump(_UNIVERSE_CACHE, f, indent=4)
+        logger.info(f"Successfully persisted UNIVERSE_CACHE on disk ({len(_UNIVERSE_CACHE)} instruments).")
+    except Exception as e:
+        logger.error(f"Failed to persist UNIVERSE_CACHE to file: {e}")
+
 def save_universe_cache(symbols: List[str] | dict) -> None:
     """
     Persists the updated universe mapping to the JSON cache file and updates memory.
@@ -87,13 +98,43 @@ def save_universe_cache(symbols: List[str] | dict) -> None:
             } for sym in symbols if sym
         }
         
+    _UNIVERSE_CACHE = clean_cache
+    persist_universe_cache()
+
+def add_symbol_to_universe(symbol: str, exchange: str, token: int) -> None:
+    """
+    Adds or updates a symbol in the universe cache and persists the state.
+    """
+    global _UNIVERSE_CACHE
+    key = symbol.upper().strip()
+    _UNIVERSE_CACHE[key] = {
+        "exchange": exchange.upper().strip(),
+        "instrument_token": int(token)
+    }
+    persist_universe_cache()
+
+def remove_symbol_from_universe(symbol: str) -> None:
+    """
+    Removes a symbol from the universe cache and persists the state.
+    """
+    global _UNIVERSE_CACHE
+    key = symbol.upper().strip()
+    if key in _UNIVERSE_CACHE:
+        del _UNIVERSE_CACHE[key]
+        persist_universe_cache()
+
+def clear_universe_cache() -> None:
+    """
+    Clears the universe cache in memory and removes the persisted file.
+    """
+    global _UNIVERSE_CACHE
+    _UNIVERSE_CACHE = {}
     try:
-        with open(CACHE_FILE_PATH, "w") as f:
-            json.dump(clean_cache, f, indent=4)
-        _UNIVERSE_CACHE = clean_cache
-        logger.info(f"Successfully saved and rebuilt UNIVERSE_CACHE with {len(clean_cache)} symbols.")
+        if os.path.exists(CACHE_FILE_PATH):
+            os.remove(CACHE_FILE_PATH)
+        logger.info("Successfully cleared universe cache in memory and on disk.")
     except Exception as e:
-        logger.error(f"Failed to save UNIVERSE_CACHE to file: {e}")
+        logger.error(f"Failed to delete universe cache file: {e}")
 
 def get_symbol_exchange(symbol: str) -> str:
     """

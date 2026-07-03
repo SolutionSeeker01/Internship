@@ -9,23 +9,23 @@ logger = get_logger(__name__)
 # Internal thread-safe lock to synchronize read/write access to the store.
 _store_lock = threading.Lock()
 
-# The in-memory database holding the latest tick data per token.
-# Key: Instrument token (int, e.g., 738561)
+# The in-memory database holding the latest tick data per symbol key.
+# Key: "EXCHANGE:SYMBOL" (str, e.g. "NSE:RELIANCE")
 # Value: Normalized tick data dictionary
-_market_data_store: Dict[int, Dict[str, Any]] = {}
+_market_data_store: Dict[str, Dict[str, Any]] = {}
 
 
-def update_market_data(token: int, data: Dict[str, Any]) -> None:
+def update_market_data(key: str, data: Dict[str, Any]) -> None:
     """
-    Updates the in-memory store with the latest market data for the given token.
+    Updates the in-memory store with the latest market data for the given EXCHANGE:SYMBOL key.
     """
     with _store_lock:
-        _market_data_store[token] = deepcopy(data)
+        _market_data_store[key] = deepcopy(data)
         
-    logger.debug(f"Updated market data in store for token: {token}")
+    logger.debug(f"Updated market data in store for key: {key}")
 
 
-def get_market_data() -> Dict[int, Dict[str, Any]]:
+def get_market_data() -> Dict[str, Dict[str, Any]]:
     """
     Returns the full snapshot of the current market data.
     """
@@ -57,9 +57,8 @@ def get_symbol_exchange_data(symbol: str, exchange: str) -> Optional[Dict[str, A
     """
     symbol_upper = symbol.upper().strip()
     exchange_upper = exchange.upper().strip()
+    key = f"{exchange_upper}:{symbol_upper}"
     with _store_lock:
-        for data in _market_data_store.values():
-            if str(data.get("symbol") or "").upper().strip() == symbol_upper and \
-               str(data.get("exchange") or "").upper().strip() == exchange_upper:
-                return deepcopy(data)
+        if key in _market_data_store:
+            return deepcopy(_market_data_store[key])
     return None

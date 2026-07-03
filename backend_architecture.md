@@ -65,7 +65,8 @@ Backend/
 │   └── password.py                  # bcrypt hash/verify using passlib
 │
 ├── services/
-│   └── auth_service.py              # authenticate_user() – DB lookup + password verify
+│   ├── auth_service.py              # authenticate_user() – DB lookup + password verify
+│   └── email_service.py             # send_account_created_email/send_password_reset_email (SMTP)
 │
 ├── signals/
 │   ├── __init__.py
@@ -92,7 +93,7 @@ Backend/
 | **`models/`** | SQLAlchemy ORM models for `users` and `broker_accounts` tables |
 | **`database/`** | Raw SQL repositories for `instruments`, `signals`, `watchlists`, `watchlist_items` tables; engine/session factory |
 | **`dependencies/`** | FastAPI `Depends()` injectable auth guard |
-| **`services/`** | Business-level service functions (currently: auth only) |
+| **`services/`** | Business-level service functions: auth and email notification services |
 | **`security/`** | Cryptographic primitives: Fernet encryption, JWT handling, bcrypt passwords |
 | **`signals/`** | Webhook signal validation pipeline, Pydantic schemas, status constants |
 | **`market_data/`** | Zerodha KiteConnect/KiteTicker integration, real-time tick processing, subscription management, in-memory stores |
@@ -544,6 +545,14 @@ Backend/
 
 ---
 
+### `services/email_service.py`
+
+**Purpose:** SMTP mail delivery wrappers using Gmail (TLS port 587) for administrative user alerts: `send_account_created_email` and `send_password_reset_email`.
+
+**Consumers:** `routers/user_management.py` (after database commit)
+
+---
+
 ### `signals/validator.py`
 
 **Purpose:** 7-layer validation pipeline for incoming webhook signals.
@@ -755,6 +764,10 @@ id | watchlist_id | symbol | exchange | instrument_id | created_at
 - JWT tokens carry `sub` (user_id), `username`, `role`, `exp` claims
 - Inactive users cannot login or access protected endpoints
 - Password must have: ≥8 chars, uppercase, lowercase, digit, special character
+- Creating a user or resetting passwords triggers an email notification to the affected user containing their credentials
+- Database transactions must commit successfully before attempting email delivery
+- Email delivery failures must not rollback database changes; the API will return success with a warning message
+- SMTP credentials (`EMAIL_PASS`) must never be logged
 
 ### Broker Onboarding
 - API credentials (api_key, api_secret, access_token) are Fernet-encrypted at rest

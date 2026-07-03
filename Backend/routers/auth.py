@@ -17,6 +17,7 @@ from database.db import SessionLocal
 from kiteconnect import KiteConnect
 from market_data.kite_client import start_market_data_service, is_market_service_running, restart_market_data_service
 import asyncio
+from services.brokers.factory import BrokerFactory
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -140,19 +141,19 @@ async def connect_broker(current_user: User = Depends(get_current_user)):
         account.oauth_state = oauth_state
         account.oauth_state_created_at = datetime.now(timezone.utc)
         
-        # Step 6: Construct the Zerodha login redirect URL with validation checks
+        # Step 6: Construct the login redirect URL via BrokerFactory
         try:
-            # Check for API key validity (Zerodha API keys must be non-empty alphanumeric strings, e.g., length between 10 and 64)
-            # Typically invalid API keys can be caught via regex or length validation.
-            # In local integration, we return a 400 Bad Request if the key is obviously malformed or invalid.
-            if not api_key.isalnum() or len(api_key) < 5:
-                raise ValueError("Invalid format")
-
-            login_url = (
-                f"https://kite.zerodha.com/connect/login"
-                f"?api_key={api_key}"
-                f"&v=3"
-                f"&state={oauth_state}"
+            broker = BrokerFactory.get_broker(
+                current_user.active_broker,
+                api_key=api_key
+            )
+            login_url = broker.get_login_url(
+                state=oauth_state
+            )
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e)
             )
         except Exception:
             raise HTTPException(
@@ -251,7 +252,8 @@ async def broker_callback(
     try:
         # STEP 1: Retrieve authenticated user's BrokerAccount
         account = session.query(BrokerAccount).filter(
-            BrokerAccount.user_id == current_user.id
+            BrokerAccount.user_id == current_user.id,
+            BrokerAccount.broker == current_user.active_broker
         ).first()
         if not account:
             raise HTTPException(
@@ -292,29 +294,35 @@ async def broker_callback(
                 detail="Failed to process broker credentials"
             )
 
-        # STEP 5: Create KiteConnect instance
-        kite = KiteConnect(api_key=api_key)
-
-        # STEP 6 & 7: Exchange request_token for session data
+        # STEP 5 & 6: Resolve broker provider via Factory and exchange request token
         try:
-            session_data = kite.generate_session(
-                request_token=payload.request_token,
+            broker = BrokerFactory.get_broker(
+                current_user.active_broker,
+                api_key=api_key,
                 api_secret=api_secret
             )
-            access_token = session_data["access_token"]
-            user_name = session_data["user_name"]
-            broker_user_id = session_data.get("user_id")
+            callback_data = broker.handle_callback(
+                params={"request_token": payload.request_token}
+            )
+            access_token = callback_data["access_token"]
+            broker_username = callback_data["broker_username"]
+            broker_user_id = callback_data["broker_user_id"]
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e)
+            )
         except Exception:
-            # Zerodha authentication failure (HTTP 400)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Failed to authenticate broker"
             )
 
-        # Duplicate Zerodha Account Connection validation
+        # Duplicate Broker Account Connection validation
         if broker_user_id:
             existing = session.query(BrokerAccount).filter(
                 BrokerAccount.broker_user_id == broker_user_id,
+                BrokerAccount.broker == current_user.active_broker,
                 BrokerAccount.user_id != current_user.id
             ).first()
             if existing:
@@ -341,7 +349,7 @@ async def broker_callback(
         today_ist = datetime.now(IST).date()
 
         account.access_token = encrypted_access_token
-        account.zerodha_user_name = user_name
+        account.broker_username = broker_username
         account.broker_user_id = broker_user_id
         account.is_connected = True
         account.last_login_trading_day = today_ist

@@ -1,5 +1,6 @@
 from typing import Any, Dict, Set
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from datetime import datetime
 
 # Import store module to retrieve current snapshot
 from market_data.store import get_market_data
@@ -23,10 +24,13 @@ class ConnectionManager:
         self.active_connections: Set[WebSocket] = set()
 
     async def connect(self, websocket: WebSocket) -> None:
-        """Accepts the WebSocket connection and registers the client."""
+        """Accepts the WebSocket connection without registering for broadcasts yet."""
         await websocket.accept()
+
+    def register(self, websocket: WebSocket) -> None:
+        """Registers the accepted connection to receive broadcasts."""
         self.active_connections.add(websocket)
-        logger.info(f"WebSocket client connected. Active connections: {len(self.active_connections)}")
+        logger.info(f"WebSocket client registered. Active connections: {len(self.active_connections)}")
 
     def disconnect(self, websocket: WebSocket) -> None:
         """Removes client from active registry."""
@@ -66,24 +70,38 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     FastAPI WebSocket endpoint.
     
     Accepts new client connections, pushes the initial snapshot from store,
-    and monitors the connection for disconnects or incoming frame errors.
+    and registers the client to receive live updates afterward.
     """
     await manager.connect(websocket)
     
     # 1. Send the initial snapshot of all market data immediately
     try:
         snapshot = get_market_data()
+        
+        # Explicitly serialize datetime fields to ISO strings at the WebSocket boundary
+        serialized_snapshot = {}
+        for key, tick in snapshot.items():
+            serialized_tick = dict(tick)
+            ts = serialized_tick.get("timestamp")
+            if isinstance(ts, datetime):
+                serialized_tick["timestamp"] = ts.isoformat()
+            serialized_snapshot[key] = serialized_tick
+
         await websocket.send_json({
             "type": "snapshot",
-            "data": snapshot
+            "data": serialized_snapshot
         })
         logger.debug("Sent initial market data snapshot to new client.")
     except Exception as e:
         logger.error(f"Failed to send initial snapshot: {e}")
-        manager.disconnect(websocket)
+        # Safely close connection on failure
+        await websocket.close()
         return
 
-    # 2. Maintain loop to receive messages and monitor disconnect event
+    # 2. Register for live updates only AFTER snapshot is successfully sent
+    manager.register(websocket)
+
+    # 3. Maintain loop to receive messages and monitor disconnect event
     try:
         while True:
             # We call receive_text to block and wait for user messages (if any)
@@ -107,7 +125,14 @@ async def broadcast_market_update(data: Dict[str, Any]) -> None:
         data (Dict[str, Any]): Normalized tick update data.
     """
     logger.debug("Broadcasting market update to all WebSocket clients.")
+    
+    # Explicitly serialize datetime timestamp to ISO string before broadcast
+    serialized_data = dict(data)
+    ts = serialized_data.get("timestamp")
+    if isinstance(ts, datetime):
+        serialized_data["timestamp"] = ts.isoformat()
+
     await manager.broadcast({
         "type": "update",
-        "data": data
+        "data": serialized_data
     })

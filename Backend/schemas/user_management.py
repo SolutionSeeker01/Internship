@@ -149,7 +149,7 @@ class UserManagementResponse(BaseModel):
     id: int
     username: str
     email: str
-    fullname: str
+    fullname: Optional[str] = None
     role: str
     is_active: bool
     email_warning: Optional[str] = None

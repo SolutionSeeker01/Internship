@@ -1,0 +1,280 @@
+from services.brokers.base import BaseBroker
+from typing import Dict, Any, List, Optional
+from datetime import datetime
+from kiteconnect import KiteConnect
+import requests
+from schemas.candles import HistoricalCandle
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+class ZerodhaBroker(BaseBroker):
+    """
+    Zerodha provider implementation.
+    """
+    LOGIN_URL = "https://kite.zerodha.com/connect/login"
+
+    def __init__(self, api_key: str, api_secret: str = None, access_token: str = None):
+        self.api_key = api_key
+        self.api_secret = api_secret
+        self.access_token = access_token
+
+    def get_login_url(self, state: str) -> str:
+        """
+        Constructs the Zerodha Kite Connect login redirect URL.
+        """
+        # Validate presence
+        if not self.api_key:
+            raise ValueError("API key not configured")
+
+        return (
+            f"{self.LOGIN_URL}"
+            f"?api_key={self.api_key}"
+            f"&v=3"
+            f"&state={state}"
+        )
+
+    def handle_callback(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Handles the Zerodha callback, exchanging request_token for long-lived session access token.
+        """
+        request_token = params.get("request_token")
+        if not request_token:
+            raise ValueError("request_token is required in params")
+            
+        if not self.api_key or not self.api_secret:
+            raise ValueError("API credentials (api_key/api_secret) are not configured on this provider.")
+
+        try:
+            kite = KiteConnect(api_key=self.api_key)
+            session_data = kite.generate_session(
+                request_token=request_token,
+                api_secret=self.api_secret
+            )
+            return {
+                "access_token": session_data["access_token"],
+                "broker_username": session_data["user_name"],
+                "broker_user_id": session_data.get("user_id"),
+                "refresh_token": None
+            }
+        except Exception:
+            raise ValueError("Zerodha authentication failed. Please check your credentials and request token.")
+
+    def is_session_valid(self, api_key: str, access_token: str) -> bool:
+        """
+        Unimplemented session validator.
+        """
+        raise NotImplementedError("is_session_valid is not implemented in ZerodhaBroker.")
+
+    def get_historical_candles(
+        self,
+        instrument_token: int,
+        interval: str,
+        from_date: datetime,
+        to_date: datetime
+    ) -> List[HistoricalCandle]:
+        """
+        Retrieves historical candlestick data for the specified instrument token.
+        """
+        if not self.api_key or not self.access_token:
+            raise ValueError("API credentials (api_key/access_token) are not configured on this provider.")
+
+        try:
+            kite = KiteConnect(api_key=self.api_key, timeout=30)
+            kite.set_access_token(self.access_token)
+        except Exception as e:
+            logger.error(f"Failed to initialize Kite client session: {e}")
+            raise ValueError("Failed to initialize connection to broker.")
+
+        # Fetch historical candles from Zerodha with retry logic
+        historical_data = None
+        try:
+            historical_data = kite.historical_data(
+                instrument_token=instrument_token,
+                from_date=from_date,
+                to_date=to_date,
+                interval=interval
+            )
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+            logger.warning(f"Timeout/Connection error fetching historical data for token {instrument_token} on first attempt: {e}. Retrying once...")
+            try:
+                historical_data = kite.historical_data(
+                    instrument_token=instrument_token,
+                    from_date=from_date,
+                    to_date=to_date,
+                    interval=interval
+                )
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e2:
+                logger.error(f"Timeout/Connection error fetching historical data for token {instrument_token} on retry: {e2}")
+                raise ValueError("Timeout retrieving historical data from broker.")
+            except Exception as e2:
+                logger.error(f"Unexpected error fetching historical data for token {instrument_token} on retry: {e2}")
+                raise ValueError("Unexpected broker error during retry.")
+        except Exception as e:
+            logger.error(f"Failed to fetch historical candles from Zerodha for token {instrument_token}: {e}")
+            raise ValueError("Failed to retrieve historical candlestick data from broker.")
+
+        # Normalize responses
+        normalized_candles = []
+        if historical_data:
+            for candle in historical_data:
+                normalized_candles.append(HistoricalCandle(
+                    candle_start=candle["date"],
+                    open=float(candle["open"]),
+                    high=float(candle["high"]),
+                    low=float(candle["low"]),
+                    close=float(candle["close"]),
+                    volume=int(candle["volume"])
+                ))
+        return normalized_candles
+
+    def start_feed(self, loop: Any, subscription_tokens: List[int], on_tick_callback: Any) -> None:
+        """
+        Spawns the background WebSocket client feed for this broker.
+        """
+        from kiteconnect import KiteTicker
+
+        if not self.api_key or not self.access_token:
+            raise ValueError("API credentials (api_key/access_token) are required for starting feed.")
+
+        if self.is_feed_running():
+            logger.warning("Zerodha feed is already running.")
+            return
+
+        self._on_tick_callback = on_tick_callback
+        self._subscribed_tokens = set(subscription_tokens)
+
+        try:
+            self._kws = KiteTicker(api_key=self.api_key, access_token=self.access_token)
+
+            # Register callbacks
+            self._kws.on_connect = self._on_ticker_connect
+            self._kws.on_ticks = self._on_ticker_ticks
+            self._kws.on_error = self._on_ticker_error
+            self._kws.on_close = self._on_ticker_close
+
+            logger.info("Connecting to Zerodha KiteTicker WebSocket...")
+            self._kws.connect(threaded=True)
+        except Exception as e:
+            logger.critical(f"Failed to start Zerodha KiteTicker: {e}", exc_info=True)
+            self._kws = None
+            self._on_tick_callback = None
+            raise
+
+    def stop_feed(self) -> None:
+        """
+        Terminates the WebSocket client feed connection and resets connection structures.
+        """
+        if hasattr(self, "_kws") and self._kws is not None:
+            try:
+                self._kws.close()
+            except Exception as e:
+                logger.error(f"Error closing Zerodha KiteTicker: {e}")
+            self._kws = None
+        self._on_tick_callback = None
+        logger.info("Zerodha KiteTicker successfully stopped.")
+
+    def update_subscriptions(self, subscription_tokens: List[int]) -> None:
+        """
+        Dynamically updates active ticker subscriptions.
+        """
+        if hasattr(self, "_kws") and self._kws is not None and self._kws.is_connected():
+            try:
+                current_tokens = set(subscription_tokens)
+                if len(current_tokens) > 4000:
+                    logger.critical(f"REFUSING SUBSCRIPTION UPDATE: Attempted to subscribe to {len(current_tokens)} tokens.")
+                    return
+
+                to_unsubscribe = self._subscribed_tokens - current_tokens
+                if to_unsubscribe:
+                    self._kws.unsubscribe(list(to_unsubscribe))
+                    logger.info(f"Zerodha ticker unsubscribed from: {list(to_unsubscribe)}")
+
+                if current_tokens:
+                    self._kws.subscribe(list(current_tokens))
+                    self._kws.set_mode(self._kws.MODE_FULL, list(current_tokens))
+                    logger.info(f"Zerodha ticker subscribed to {len(current_tokens)} tokens in FULL mode.")
+
+                self._subscribed_tokens = current_tokens
+            except Exception as e:
+                logger.error(f"Failed to update Zerodha subscriptions: {e}")
+        else:
+            logger.warning("Zerodha ticker is not connected. Subscriptions will load on connect.")
+
+    def is_feed_running(self) -> bool:
+        """
+        Returns True if the WebSocket client feed is active and running.
+        """
+        return hasattr(self, "_kws") and self._kws is not None and self._kws.is_connected()
+
+    # Low-level Zerodha ticker callbacks
+    def _on_ticker_connect(self, ws, response):
+        logger.info("Successfully connected to Zerodha KiteTicker.")
+        tokens = list(self._subscribed_tokens)
+        if tokens:
+            ws.subscribe(tokens)
+            ws.set_mode(ws.MODE_FULL, tokens)
+            logger.info(f"Successfully subscribed to {len(tokens)} tokens in FULL mode on connect.")
+
+    def _on_ticker_ticks(self, ws, ticks):
+        if not hasattr(self, "_on_tick_callback") or not self._on_tick_callback:
+            return
+
+        for tick in ticks:
+            token = tick.get("instrument_token")
+            if token is None:
+                continue
+
+            from market_data.subscriptions import get_instrument_metadata
+            meta = get_instrument_metadata(token)
+            if not meta:
+                continue
+            symbol = meta["symbol"]
+            exchange = meta["exchange"]
+
+            try:
+                from market_data.kite_client import normalize_tick
+                normalized_data = normalize_tick(tick, symbol, exchange)
+                self._on_tick_callback(normalized_data)
+            except Exception as e:
+                logger.error(f"Error normalizing Zerodha tick: {e}", exc_info=True)
+
+    def _on_ticker_error(self, ws, code, reason):
+        logger.error(f"Zerodha Ticker connection error: {code} - {reason}")
+
+    def _on_ticker_close(self, ws, code, reason):
+        logger.warning(f"Zerodha Ticker connection closed: {code} - {reason}")
+
+    def get_instruments_metadata(self, exchange: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Fetches the master instrument list from Zerodha.
+        """
+        if not self.api_key:
+            raise ValueError("API key is not configured on this provider.")
+
+        try:
+            kite = KiteConnect(api_key=self.api_key, timeout=30)
+            if self.access_token:
+                kite.set_access_token(self.access_token)
+            if exchange:
+                return kite.instruments(exchange=exchange)
+            return kite.instruments()
+        except Exception as e:
+            logger.error(f"Failed to fetch Zerodha instruments metadata: {e}")
+            raise
+
+    def get_ltp(self, query_symbols: List[str]) -> Dict[str, Dict[str, Any]]:
+        """
+        Queries the last traded price for the given symbols from Zerodha.
+        """
+        if not self.api_key:
+            raise ValueError("API key is not configured on this provider.")
+
+        try:
+            kite = KiteConnect(api_key=self.api_key, timeout=30)
+            if self.access_token:
+                kite.set_access_token(self.access_token)
+            return kite.ltp(query_symbols)
+        except Exception as e:
+            logger.error(f"Failed to fetch Zerodha LTP: {e}")
+            raise

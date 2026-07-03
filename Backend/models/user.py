@@ -21,10 +21,9 @@ class User(Base):
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 
-    # One-to-One relationship mapping
-    broker_account = relationship(
+    # One-to-Many relationship mapping
+    broker_accounts = relationship(
         "BrokerAccount",
         back_populates="user",
-        uselist=False,
         cascade="all, delete-orphan"
     )

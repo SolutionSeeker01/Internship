@@ -1,9 +1,16 @@
-from fastapi import APIRouter, HTTPException, Path, Body
+from fastapi import APIRouter, HTTPException, Path, Body, Depends, Request
 from pydantic import BaseModel, Field, validator
 import re
 import threading
 from datetime import date
 from typing import List, Dict, Any
+
+from dependencies.auth import get_current_user
+from models.user import User
+from models.broker_account import BrokerAccount
+from database.db import SessionLocal
+from security.encryption import decrypt_value
+from services.brokers.factory import BrokerFactory
 
 from database.instrument_repository import (
     get_all_instruments as db_get_all,
@@ -110,21 +117,44 @@ def get_instruments():
 
 
 @router.post("")
-def add_instrument(payload: InstrumentCreate):
+def add_instrument(payload: InstrumentCreate, current_user: User = Depends(get_current_user)):
     """
     Creates/saves a new instrument in PostgreSQL after metadata and live market validation.
     """
     logger.info(f"POST /instruments: {payload.symbol} ({payload.instrument_category})")
 
-    # Get authorized KiteConnect instance
+    # Resolve active broker instance
+    session = SessionLocal()
     try:
-        kite = get_kite()
+        account = session.query(BrokerAccount).filter(
+            BrokerAccount.user_id == current_user.id,
+            BrokerAccount.broker == current_user.active_broker
+        ).first()
+
+        if not account or not account.api_key:
+            raise HTTPException(
+                status_code=400,
+                detail="Broker credentials not configured"
+            )
+
+        api_key = decrypt_value(account.api_key)
+        access_token = decrypt_value(account.access_token) if account.access_token else None
+
+        broker = BrokerFactory.get_broker(
+            current_user.active_broker,
+            api_key=api_key,
+            access_token=access_token
+        )
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Failed to get KiteConnect instance during validation: {e}")
+        logger.error(f"Failed to initialize broker instance during validation: {e}")
         raise HTTPException(
             status_code=500,
             detail="Unable to validate instrument at this time."
         )
+    finally:
+        session.close()
 
     # STEP 1 - INSTRUMENT CORRECTNESS VALIDATION
     exchange_upper = payload.exchange.upper().strip()
@@ -133,13 +163,13 @@ def add_instrument(payload: InstrumentCreate):
     with _cache_lock:
         cached_date, cached_list = _instruments_cache.get(exchange_upper, (None, None))
         if cached_list is None or cached_date != today:
-            logger.info(f"Fetching master instrument list from Zerodha for exchange: {exchange_upper}")
+            logger.info(f"Fetching master instrument list from broker for exchange: {exchange_upper}")
             try:
-                fetched_list = kite.instruments(exchange=exchange_upper)
+                fetched_list = broker.get_instruments_metadata(exchange=exchange_upper)
                 _instruments_cache[exchange_upper] = (today, fetched_list)
                 cached_list = fetched_list
             except Exception as e:
-                logger.error(f"Zerodha master list fetch failed for exchange {exchange_upper}: {e}")
+                logger.error(f"Broker master list fetch failed for exchange {exchange_upper}: {e}")
                 raise HTTPException(
                     status_code=500,
                     detail="Unable to validate instrument at this time."
@@ -158,7 +188,7 @@ def add_instrument(payload: InstrumentCreate):
             detail="Instrument details do not match broker metadata. Please verify symbol, token, exchange, and segment."
         )
 
-    # Strict check: exchange and tradingsymbol must match Zerodha record exactly
+    # Strict check: exchange and tradingsymbol must match broker record exactly
     if str(matched_record.get("exchange") or "").upper() != exchange_upper or \
        str(matched_record.get("tradingsymbol") or "").upper() != payload.symbol.upper():
         raise HTTPException(
@@ -191,7 +221,7 @@ def add_instrument(payload: InstrumentCreate):
     query_symbol = f"{auth_exchange}:{auth_symbol}"
 
     try:
-        ltp_res = kite.ltp(query_symbol)
+        ltp_res = broker.get_ltp([query_symbol])
         if not ltp_res or query_symbol not in ltp_res:
             raise HTTPException(
                 status_code=400,
@@ -247,6 +277,14 @@ def add_instrument(payload: InstrumentCreate):
         reload_instruments()
         from market_data.kite_client import update_subscriptions
         update_subscriptions()
+        
+        # Sync to universe cache
+        from market_data.universe import add_symbol_to_universe
+        add_symbol_to_universe(
+            symbol=str(matched_record.get("tradingsymbol") or payload.symbol),
+            exchange=str(matched_record.get("exchange") or payload.exchange),
+            token=int(matched_record.get("instrument_token") or payload.token)
+        )
     except Exception as e:
         logger.warning(f"Failed to reload instrument cache or update subscriptions: {e}")
 
@@ -270,6 +308,10 @@ def clear_all_instruments():
         reload_instruments()
         from market_data.kite_client import update_subscriptions
         update_subscriptions()
+        
+        # Clear universe cache
+        from market_data.universe import clear_universe_cache
+        clear_universe_cache()
     except Exception as e:
         logger.warning(f"Failed to reload instrument cache or update subscriptions after clearing all: {e}")
 
@@ -295,6 +337,10 @@ def delete_instrument(symbol: str = Path(..., min_length=1), exchange: str = Non
         reload_instruments()
         from market_data.kite_client import update_subscriptions
         update_subscriptions()
+        
+        # Remove from universe cache
+        from market_data.universe import remove_symbol_from_universe
+        remove_symbol_from_universe(symbol_upper)
     except Exception as e:
         logger.warning(f"Failed to reload instrument cache or update subscriptions: {e}")
 
@@ -334,33 +380,56 @@ def map_zerodha_instrument(inst: dict) -> dict:
         "name": name,
         "segment": derived_segment,
         "broker": "ZERODHA",
-        "instrument_category": derived_category
+                "instrument_category": derived_category
     }
 
 
 @router.post("/sync")
-def sync_instruments(payload: SyncRequest):
+def sync_instruments(payload: SyncRequest, current_user: User = Depends(get_current_user)):
     """
-    Syncs instruments from Zerodha master list using kite.instruments() filtered by exchanges and segments.
+    Syncs instruments from broker master list using broker.get_instruments_metadata() filtered by exchanges and segments.
     """
     logger.info(f"POST /instruments/sync: exchanges={payload.exchanges}, segments={payload.segments}")
     
+    session = SessionLocal()
     try:
-        kite = get_kite()
+        account = session.query(BrokerAccount).filter(
+            BrokerAccount.user_id == current_user.id,
+            BrokerAccount.broker == current_user.active_broker
+        ).first()
+
+        if not account or not account.api_key:
+            raise HTTPException(
+                status_code=400,
+                detail="Broker credentials not configured"
+            )
+
+        api_key = decrypt_value(account.api_key)
+        access_token = decrypt_value(account.access_token) if account.access_token else None
+
+        broker = BrokerFactory.get_broker(
+            current_user.active_broker,
+            api_key=api_key,
+            access_token=access_token
+        )
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Failed to get KiteConnect instance during sync: {e}")
+        logger.error(f"Failed to initialize broker instance during sync: {e}")
         raise HTTPException(
             status_code=500,
-            detail="Unable to connect to Zerodha client at this time."
+            detail="Unable to connect to broker client at this time."
         )
+    finally:
+        session.close()
 
     try:
-        master_list = kite.instruments()
+        master_list = broker.get_instruments_metadata()
     except Exception as e:
-        logger.error(f"Failed to fetch instrument master list from Zerodha: {e}")
+        logger.error(f"Failed to fetch instrument master list from broker: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Zerodha master list fetch failed: {str(e)}"
+            detail=f"Broker master list fetch failed: {str(e)}"
         )
 
     if not master_list:

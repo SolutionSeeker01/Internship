@@ -24,7 +24,7 @@ try:
 except ValueError:
     raise ValueError("ACCESS_TOKEN_EXPIRE_MINUTES must be a valid integer")
 
-def create_access_token(user_id: int, username: str, role: str) -> str:
+def create_access_token(user_id: int, username: str, role: str, active_broker: str = "ZERODHA") -> str:
     """
     Encodes claims and creates a signed JWT access token.
     
@@ -32,6 +32,7 @@ def create_access_token(user_id: int, username: str, role: str) -> str:
         user_id (int): The unique database identifier of the user.
         username (str): The login username.
         role (str): The assigned access role of the user.
+        active_broker (str): The currently active session broker.
         
     Returns:
         str: The encoded JWT token.
@@ -41,6 +42,7 @@ def create_access_token(user_id: int, username: str, role: str) -> str:
         "sub": str(user_id),
         "username": username,
         "role": role,
+        "active_broker": active_broker,
         "exp": expire
     }
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)

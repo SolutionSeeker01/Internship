@@ -22,7 +22,7 @@ let reconnectTimer = null;
 /**
  * Handle a 'snapshot' message – bulk-populate every symbol at once.
  *
- * @param {Record<string, object>} data  – object keyed by symbol name
+ * @param {Record<string, object>} data  – object keyed by EXCHANGE:SYMBOL identifier
  */
 function handleSnapshot(data) {
     for (const [token, marketData] of Object.entries(data)) {
@@ -76,6 +76,15 @@ function handleUpdate(data) {
  * Open a WebSocket connection and wire up all event handlers.
  */
 function connectWebSocket() {
+    if (
+        socket &&
+        (socket.readyState === WebSocket.OPEN ||
+         socket.readyState === WebSocket.CONNECTING)
+    ) {
+        console.info('[Dashboard] WebSocket is already connecting or open. Skipping connection attempt.');
+        return;
+    }
+
     if (reconnectTimer !== null) {
         clearTimeout(reconnectTimer);
         reconnectTimer = null;
@@ -102,6 +111,11 @@ function connectWebSocket() {
     socket.onopen = () => {
         console.info('[Dashboard] WebSocket connected.');
         updateConnectionStatus('connected');
+        
+        // Refresh watchlist layout dynamically on connection/reconnection to ensure DOM is populated
+        if (typeof loadWatchlist === 'function') {
+            loadWatchlist();
+        }
     };
 
     /* ---- onmessage ---- */
@@ -154,3 +168,10 @@ function scheduleReconnect() {
         connectWebSocket();
     }, RECONNECT_DELAY_MS);
 }
+
+/**
+ * Global wrapper to satisfy legacy dashboard controllers connectMarketSocket calls.
+ */
+window.connectMarketSocket = function(options = {}) {
+    connectWebSocket();
+};

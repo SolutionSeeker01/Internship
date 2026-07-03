@@ -9,6 +9,7 @@ from market_data.subscriptions import get_symbol, get_tokens, get_instrument_met
 from market_data.store import update_market_data
 from routers.websocket import broadcast_market_update
 from utils.logger import get_logger
+from schemas.ticks import NormalizedTick
 import threading
 
 # Set up logging
@@ -17,6 +18,11 @@ logger = get_logger(__name__)
 # Keep a module-level reference to the KiteTicker instance and the main thread event loop.
 _kws: Optional[KiteTicker] = None
 _main_loop: Optional[asyncio.AbstractEventLoop] = None
+
+# Active broker adapter singleton reference managed by Phase 3B orchestrator
+from services.brokers.base import BaseBroker
+from services.brokers.factory import BrokerFactory
+_active_broker: Optional[BaseBroker] = None
 
 # Track processed ticks for high-level health summaries
 _tick_count: int = 0
@@ -76,11 +82,14 @@ def normalize_tick(tick: Dict[str, Any], symbol: str, exchange: str) -> Dict[str
     # Ensure timestamp is handled gracefully. Fallback to current local time if missing.
     tick_timestamp = tick.get("timestamp")
     if isinstance(tick_timestamp, datetime):
-        timestamp_str = tick_timestamp.isoformat()
+        ts = tick_timestamp
     elif isinstance(tick_timestamp, str):
-        timestamp_str = tick_timestamp
+        try:
+            ts = datetime.fromisoformat(tick_timestamp)
+        except Exception:
+            ts = datetime.now()
     else:
-        timestamp_str = datetime.now().isoformat()
+        ts = datetime.now()
 
     depth = tick.get("depth")
     bid_price = None
@@ -102,23 +111,42 @@ def normalize_tick(tick: Dict[str, Any], symbol: str, exchange: str) -> Dict[str
                 if price and price != 0:  # Prefer None over fake zero values
                     ask_price = price
 
-    return {
-        "symbol": symbol,
-        "exchange": exchange,
-        "token": tick.get("instrument_token"),
-        "ltp": tick.get("last_price", 0.0),
-        "change": tick.get("change", 0.0),
-        "open": ohlc.get("open", 0.0),
-        "high": ohlc.get("high", 0.0),
-        "low": ohlc.get("low", 0.0),
-        "close": ohlc.get("close", 0.0),
-        "volume": volume,
-        "bid": bid_price,
-        "ask": ask_price,
-        "timestamp": timestamp_str,
-    }
+    normalized = NormalizedTick(
+        key=f"{exchange}:{symbol}",
+        symbol=symbol,
+        exchange=exchange,
+        ltp=float(tick.get("last_price", 0.0)),
+        change=float(tick.get("change", 0.0)),
+        open=float(ohlc.get("open", 0.0)),
+        high=float(ohlc.get("high", 0.0)),
+        low=float(ohlc.get("low", 0.0)),
+        close=float(ohlc.get("close", 0.0)),
+        volume=int(volume),
+        bid=bid_price,
+        ask=ask_price,
+        timestamp=ts
+    )
+    return normalized.model_dump()
 
 
+def on_tick_received(normalized_data: Dict[str, Any]) -> None:
+    """
+    Callback triggered by the active broker feed adapter when a new normalized tick is received.
+    Updates the shared store and schedules the async WebSocket broadcast.
+    """
+    global _tick_count
+    _tick_count += 1
+    
+    key = normalized_data["key"]
+    update_market_data(key, normalized_data)
+    
+    if _main_loop is not None and _main_loop.is_running():
+        asyncio.run_coroutine_threadsafe(
+            broadcast_market_update(normalized_data), _main_loop
+        )
+
+
+# TODO: DEPRECATED AFTER PHASE 3B VERIFICATION
 def on_connect(ws: KiteTicker, response: Any) -> None:
     """
     Callback triggered on a successful connection to Zerodha KiteTicker.
@@ -148,6 +176,7 @@ def on_connect(ws: KiteTicker, response: Any) -> None:
         _subscribed_tokens = set()
 
 
+# TODO: DEPRECATED AFTER PHASE 3B VERIFICATION
 def on_ticks(ws: KiteTicker, ticks: List[Dict[str, Any]]) -> None:
     """
     Callback triggered when new ticks are received from the WebSocket stream.
@@ -171,7 +200,8 @@ def on_ticks(ws: KiteTicker, ticks: List[Dict[str, Any]]) -> None:
  
         try:
             normalized_data = normalize_tick(tick, symbol, exchange)
-            update_market_data(token, normalized_data)
+            key = normalized_data["key"]
+            update_market_data(key, normalized_data)
 
             # Schedule the asynchronous WebSocket broadcast on the main thread event loop thread-safely.
             # This does not block the KiteTicker callback thread.
@@ -190,6 +220,7 @@ def on_ticks(ws: KiteTicker, ticks: List[Dict[str, Any]]) -> None:
             logger.error(f"Failed to normalize and store tick for token {token} ({symbol}): {e}", exc_info=True)
 
 
+# TODO: DEPRECATED AFTER PHASE 3B VERIFICATION
 def on_error(ws: KiteTicker, code: int, reason: str) -> None:
     """
     Callback triggered when the KiteTicker connection encounters an error.
@@ -198,6 +229,7 @@ def on_error(ws: KiteTicker, code: int, reason: str) -> None:
     logger.error(f"KiteTicker connection error. Code: {code}, Reason: {reason}")
 
 
+# TODO: DEPRECATED AFTER PHASE 3B VERIFICATION
 def on_close(ws: KiteTicker, code: int, reason: str) -> None:
     """
     Callback triggered when the KiteTicker connection is closed.
@@ -232,26 +264,24 @@ def is_market_service_running() -> bool:
     """
     Returns current running state of the market data service.
     """
-    global _market_service_running
+    global _active_broker, _market_service_running
     with _market_service_lock:
+        if _active_broker is not None:
+            return _active_broker.is_feed_running()
         return _market_service_running
 
 
 def start_market_data_service(loop: asyncio.AbstractEventLoop, api_key: str, access_token: str) -> None:
     """
     Starts the background KiteTicker service dynamically.
-    
-    Creates a new KiteTicker instance using supplied credentials, registers callbacks, 
-    stores a reference to the main asyncio event loop, and starts the connection run loop 
-    in a background thread.
     """
-    global _kws, _main_loop, _market_service_running, _subscribed_tokens, _summary_task
+    global _main_loop, _market_service_running, _summary_task, _active_broker
     with _market_service_lock:
-        if _market_service_running:
+        if is_market_service_running():
             logger.warning("Market data service is already running. Ignoring start request.")
             return
 
-        logger.info("Starting market data service dynamically...")
+        logger.info("Starting market data service dynamically (delegated to Active Broker)...")
         
         # Store the reference to the main thread's asyncio event loop for thread-safe cross-thread calls
         _main_loop = loop
@@ -261,73 +291,112 @@ def start_market_data_service(loop: asyncio.AbstractEventLoop, api_key: str, acc
             _summary_task = _main_loop.create_task(_log_periodic_summary())
         
         try:
-            # Dynamically initialize centralized KiteConnect client first
-            create_kite_client(api_key, access_token)
+            # Phase 3B Broker Abstraction Delegation
+            if _active_broker is None:
+                _active_broker = BrokerFactory.get_broker(
+                    "zerodha",
+                    api_key=api_key,
+                    access_token=access_token
+                )
+            else:
+                # Update credentials on the existing instance if they changed
+                _active_broker.api_key = api_key
+                _active_broker.access_token = access_token
 
-            # Create new KiteTicker using the supplied connection credentials
-            _kws = create_kws(api_key, access_token)
-            
-            # Register the local event callbacks
-            _kws.on_connect = on_connect
-            _kws.on_ticks = on_ticks
-            _kws.on_error = on_error
-            _kws.on_close = on_close
-            
-            # Establish connection in a background thread to prevent blocking
-            logger.info("Connecting to KiteTicker WebSocket...")
-            _kws.connect(threaded=True)
-            
+            tokens = list(get_tokens())
+            _active_broker.start_feed(
+                loop=loop,
+                subscription_tokens=tokens,
+                on_tick_callback=on_tick_received
+            )
             _market_service_running = True
-            
+            return
         except Exception as e:
-            logger.critical(f"Critical error starting market data service dynamically: {e}", exc_info=True)
-            # FIX 4: Reset all globals on startup failure
+            logger.exception("Failed to start market data feed via active broker adapter.", exc_info=True)
             _market_service_running = False
-            _kws = None
-            _main_loop = None
-            _subscribed_tokens.clear()
+            _active_broker = None
             if _summary_task is not None and not _summary_task.done():
                 _summary_task.cancel()
             _summary_task = None
-            try:
-                reset_connection_state()
-            except Exception:
-                pass
             raise
+
+        # TODO: DEPRECATED AFTER PHASE 3B VERIFICATION
+        # Legacy Zerodha-specific path (remains here but bypassed by active broker delegation above)
+        # global _kws, _subscribed_tokens
+        # try:
+        #     # Dynamically initialize centralized KiteConnect client first
+        #     create_kite_client(api_key, access_token)
+        #     # Create new KiteTicker using the supplied connection credentials
+        #     _kws = create_kws(api_key, access_token)
+        #     # Register the local event callbacks
+        #     _kws.on_connect = on_connect
+        #     _kws.on_ticks = on_ticks
+        #     _kws.on_error = on_error
+        #     _kws.on_close = on_close
+        #     # Establish connection in a background thread to prevent blocking
+        #     logger.info("Connecting to KiteTicker WebSocket...")
+        #     _kws.connect(threaded=True)
+        #     _market_service_running = True
+        # except Exception as e:
+        #     logger.critical(f"Critical error starting market data service dynamically: {e}", exc_info=True)
+        #     _market_service_running = False
+        #     _kws = None
+        #     _main_loop = None
+        #     _subscribed_tokens.clear()
+        #     if _summary_task is not None and not _summary_task.done():
+        #         _summary_task.cancel()
+        #     _summary_task = None
+        #     try:
+        #         reset_connection_state()
+        #     except Exception:
+        #         pass
+        #     raise
 
 
 def stop_market_data_service() -> None:
     """
     Stops the background KiteTicker service and resets connection structures.
     """
-    global _kws, _subscribed_tokens, _market_service_running, _summary_task
+    global _active_broker, _market_service_running, _summary_task
     with _market_service_lock:
-        if not _market_service_running:
-            logger.info("Market data service is not running. Ignoring stop request.")
-            return
-
-        logger.info("Stopping market data service...")
+        logger.info("Stopping market data service (delegated to Active Broker)...")
         
-        try:
-            if _kws is not None:
-                _kws.close()
-        except Exception as e:
-            logger.error(f"Error closing KiteTicker websocket connection: {e}")
+        if _active_broker is not None:
+            try:
+                _active_broker.stop_feed()
+            except Exception as e:
+                logger.error(f"Error stopping active broker feed: {e}")
             
-        _kws = None
-        _subscribed_tokens.clear()
-        
         # Cancel periodic summary logging task if running to prevent memory leaks
         if _summary_task is not None:
             if not _summary_task.done():
                 _summary_task.cancel()
             _summary_task = None
         
-        # Clear the centralized KiteConnect instance
-        reset_connection_state()
-        
         _market_service_running = False
         logger.info("Market data service successfully stopped.")
+        return
+
+        # TODO: DEPRECATED AFTER PHASE 3B VERIFICATION
+        # global _kws, _subscribed_tokens
+        # if not _market_service_running:
+        #     logger.info("Market data service is not running. Ignoring stop request.")
+        #     return
+        # logger.info("Stopping market data service...")
+        # try:
+        #     if _kws is not None:
+        #         _kws.close()
+        # except Exception as e:
+        #     logger.error(f"Error closing KiteTicker websocket connection: {e}")
+        # _kws = None
+        # _subscribed_tokens.clear()
+        # if _summary_task is not None:
+        #     if not _summary_task.done():
+        #         _summary_task.cancel()
+        #     _summary_task = None
+        # reset_connection_state()
+        # _market_service_running = False
+        # logger.info("Market data service successfully stopped.")
 
 
 def restart_market_data_service(loop: asyncio.AbstractEventLoop, api_key: str, access_token: str) -> None:
@@ -344,29 +413,34 @@ def update_subscriptions() -> None:
     Updates the active KiteTicker subscriptions based on the latest cache.
     Automatically unsubscribes from deleted tokens and subscribes to new tokens.
     """
-    global _kws, _subscribed_tokens
-    if _kws is not None and _kws.is_connected():
+    global _active_broker
+    if _active_broker is not None and _active_broker.is_feed_running():
         try:
-            current_tokens = set(get_tokens())
-            if len(current_tokens) > 4000:
-                logger.critical(f"REFUSING SUBSCRIPTION UPDATE: Attempted to subscribe to {len(current_tokens)} tokens, which exceeds the limit of 4000.")
-                return
-
-            # Unsubscribe from tokens that are no longer in DB cache
-            to_unsubscribe = _subscribed_tokens - current_tokens
-            if to_unsubscribe:
-                _kws.unsubscribe(list(to_unsubscribe))
-                logger.info(f"KiteTicker unsubscribed from {len(to_unsubscribe)} tokens: {list(to_unsubscribe)}")
-            
-            # Subscribe to new/all tokens (subscribe is idempotent in Zerodha library)
-            if current_tokens:
-                _kws.subscribe(list(current_tokens))
-                _kws.set_mode(_kws.MODE_FULL, list(current_tokens))
-                logger.info(f"KiteTicker successfully updated subscriptions to {len(current_tokens)} tokens in FULL mode.")
-            
-            _subscribed_tokens = current_tokens
+            current_tokens = list(get_tokens())
+            _active_broker.update_subscriptions(current_tokens)
         except Exception as e:
-            logger.error(f"Failed to update KiteTicker subscriptions dynamically: {e}")
-    else:
-        logger.warning("KiteTicker is not connected. Subscriptions will load on connect.")
+            logger.error(f"Failed to update active broker subscriptions: {e}")
+        return
+
+    # TODO: DEPRECATED AFTER PHASE 3B VERIFICATION
+    # global _kws, _subscribed_tokens
+    # if _kws is not None and _kws.is_connected():
+    #     try:
+    #         current_tokens = set(get_tokens())
+    #         if len(current_tokens) > 4000:
+    #             logger.critical(f"REFUSING SUBSCRIPTION UPDATE: Attempted to subscribe to {len(current_tokens)} tokens, which exceeds the limit of 4000.")
+    #             return
+    #         to_unsubscribe = _subscribed_tokens - current_tokens
+    #         if to_unsubscribe:
+    #             _kws.unsubscribe(list(to_unsubscribe))
+    #             logger.info(f"KiteTicker unsubscribed from {len(to_unsubscribe)} tokens: {list(to_unsubscribe)}")
+    #         if current_tokens:
+    #             _kws.subscribe(list(current_tokens))
+    #             _kws.set_mode(_kws.MODE_FULL, list(current_tokens))
+    #             logger.info(f"KiteTicker successfully updated subscriptions to {len(current_tokens)} tokens in FULL mode.")
+    #         _subscribed_tokens = current_tokens
+    #     except Exception as e:
+    #         logger.error(f"Failed to update KiteTicker subscriptions dynamically: {e}")
+    # else:
+    #     logger.warning("KiteTicker is not connected. Subscriptions will load on connect.")
 

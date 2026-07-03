@@ -48,6 +48,9 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
         if not user.is_active:
             raise credentials_exception
             
+        # Attach session active broker context dynamically to current user
+        user.active_broker = payload.get("active_broker", "ZERODHA")
+            
         return user
     except ValueError:
         raise credentials_exception

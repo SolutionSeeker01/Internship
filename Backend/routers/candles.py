@@ -1,9 +1,13 @@
 from datetime import datetime, timedelta
 import requests
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from market_data.subscriptions import get_all_instruments
-from market_data.connection import get_kite
 from utils.logger import get_logger
+from dependencies.auth import get_current_user
+from database.db import SessionLocal
+from models.broker_account import BrokerAccount
+from security.encryption import decrypt_value
+from services.brokers.factory import BrokerFactory
 
 logger = get_logger(__name__)
 
@@ -27,7 +31,8 @@ def get_historical_candles(
     symbol: str,
     exchange: str = Query(default=None),
     interval: str = Query(default="minute"),
-    limit: int = 100
+    limit: int = 100,
+    current_user = Depends(get_current_user)
 ):
     """
     Retrieves historical candles directly from the Zerodha Historical API.
@@ -113,70 +118,72 @@ def get_historical_candles(
     else:
         from_date = to_date - timedelta(days=2)
 
-    # 5. Retrieve centralized authenticated KiteConnect session
+    # 5. Retrieve dynamic user credentials from database based on active session broker
+    session = SessionLocal()
     try:
-        kite = get_kite()
-    except Exception as e:
-        logger.error(f"Failed to get centralized Kite client: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to initialize connection to broker."
-        )
+        account = session.query(BrokerAccount).filter(
+            BrokerAccount.user_id == current_user.id,
+            BrokerAccount.broker == current_user.active_broker
+        ).first()
 
-    # 6. Fetch historical candles from Zerodha with retry logic
-    historical_data = None
-    try:
-        historical_data = kite.historical_data(
-            instrument_token=instrument_token,
-            from_date=from_date,
-            to_date=to_date,
-            interval=interval
-        )
-    except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-        logger.warning(f"Timeout/Connection error fetching historical data for {symbol_upper} on first attempt: {e}. Retrying once...")
+        if not account or not account.api_key or not account.access_token:
+            raise HTTPException(
+                status_code=400,
+                detail="Broker account or active session credentials not found. Please connect your broker account first."
+            )
+
         try:
-            historical_data = kite.historical_data(
-                instrument_token=instrument_token,
-                from_date=from_date,
-                to_date=to_date,
-                interval=interval
-            )
-        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e2:
-            logger.error(f"Timeout/Connection error fetching historical data for {symbol_upper} on retry: {e2}")
+            api_key = decrypt_value(account.api_key)
+            access_token = decrypt_value(account.access_token)
+        except Exception:
             raise HTTPException(
-                status_code=504,
-                detail="Timeout retrieving historical data from broker."
+                status_code=500,
+                detail="Failed to decrypt stored broker credentials."
             )
-        except Exception as e2:
-            logger.error(f"Unexpected error fetching historical data for {symbol_upper} on retry: {e2}")
-            raise HTTPException(
-                status_code=502,
-                detail="Unexpected broker error during retry."
-            )
+    finally:
+        session.close()
+
+    # 6. Resolve broker adapter and fetch historical candles
+    try:
+        broker = BrokerFactory.get_broker(
+            current_user.active_broker,
+            api_key=api_key,
+            access_token=access_token
+        )
+        historical_candles = broker.get_historical_candles(
+            instrument_token=instrument_token,
+            interval=interval,
+            from_date=from_date,
+            to_date=to_date
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
     except Exception as e:
-        logger.error(f"Failed to fetch historical candles from Zerodha for {symbol_upper}: {e}")
+        logger.error(f"Error fetching historical candles via adapter: {e}")
         raise HTTPException(
             status_code=500,
-            detail="Failed to retrieve historical candlestick data from broker."
+            detail="Failed to retrieve historical data from broker."
         )
 
     # 7. Slice to limit (chronologically oldest to newest, take last N elements)
-    recent_candles = historical_data[-limit:] if historical_data else []
+    recent_candles = historical_candles[-limit:] if historical_candles else []
 
     # 8. Re-format response into EXACT same JSON schema structure returned previously
     formatted_candles = []
     for candle in recent_candles:
-        # Format candle date to standard YYYY-MM-DDTHH:MM:SS string
-        date_val = candle.get("date")
+        date_val = candle.candle_start
         date_str = date_val.strftime("%Y-%m-%dT%H:%M:%S") if hasattr(date_val, 'strftime') else str(date_val)
 
         formatted_candles.append({
             "candle_start": date_str,
-            "open": float(candle["open"]),
-            "high": float(candle["high"]),
-            "low": float(candle["low"]),
-            "close": float(candle["close"]),
-            "volume": int(candle["volume"])
+            "open": float(candle.open),
+            "high": float(candle.high),
+            "low": float(candle.low),
+            "close": float(candle.close),
+            "volume": int(candle.volume)
         })
 
     return formatted_candles
