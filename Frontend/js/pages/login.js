@@ -68,7 +68,7 @@ async function handleLogin(event) {
     btnText.textContent = "Logging in...";
     
     try {
-        const response = await fetch('http://127.0.0.1:8000/auth/login', {
+        const response = await fetch(`${window.API_BASE_URL}/auth/login`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'

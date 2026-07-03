@@ -51,7 +51,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     try {
         // 3. Immediately call backend connection API endpoint
-        const response = await fetch('http://127.0.0.1:8000/auth/broker/connect', {
+        const response = await fetch(`${window.API_BASE_URL}/auth/broker/connect`, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${accessToken}`,

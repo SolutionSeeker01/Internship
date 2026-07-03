@@ -6,7 +6,7 @@
 
 console.info("[WebSocket] Module loaded.");
 
-const WS_URL             = `ws://${window.location.hostname}:8000/ws`;
+const WS_URL             = window.WS_URL;
 const RECONNECT_DELAY_MS = 5_000;
 
 /** @type {WebSocket|null} */

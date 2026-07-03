@@ -718,7 +718,7 @@ id | signal_uuid | action | symbol | entry | stoploss | timeframe | signal_times
 id | name | is_system | created_at | updated_at
 
 -- watchlist_items
-id | watchlist_id | instrument_id | created_at
+id | watchlist_id | symbol | exchange | instrument_id | created_at
 ```
 
 ### Key Constraints
@@ -730,9 +730,8 @@ id | watchlist_id | instrument_id | created_at
 | `UNIQUE(user_id)` | broker_accounts | Unique (1:1 per user) |
 | `UNIQUE(symbol)` | instruments | Unique |
 | `UNIQUE(name)` | watchlists | Unique |
-| `UNIQUE(watchlist_id, instrument_id)` | watchlist_items | Composite unique |
+| `UNIQUE(watchlist_id, symbol, exchange)` | watchlist_items | Composite unique |
 | `FK(watchlist_id → watchlists.id)` | watchlist_items | FK CASCADE DELETE |
-| `FK(instrument_id → instruments.id)` | watchlist_items | FK CASCADE DELETE |
 | `FK(user_id → users.id)` | broker_accounts | FK CASCADE DELETE |
 
 ---
@@ -780,9 +779,11 @@ id | watchlist_id | instrument_id | created_at
 
 ### Watchlists
 - Max 100 instruments per watchlist
-- No duplicate instruments within same watchlist
+- No duplicate instruments within same watchlist (evaluated on symbol + exchange)
 - Adding/removing items triggers subscription universe reload + KiteTicker subscription update
 - Watchlist names are unique
+- Catalog-decoupled: watchlists store symbol + exchange to survive instrument catalog deletions and swaps
+- Watchlist items LEFT JOIN with the active instrument catalog to dynamically resolve metadata; missing catalog items are returned with `available = false` and not rendered on the dashboard, but remain saved in the database
 
 ### Signal Validation
 - **MASTER SYSTEM NEVER EXECUTES TRADES** — signals are stored only

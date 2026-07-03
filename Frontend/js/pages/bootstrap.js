@@ -33,7 +33,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // STEP 2: Call the backend bootstrap API endpoint
     try {
-        const response = await fetch('http://127.0.0.1:8000/auth/bootstrap', {
+        const response = await fetch(`${window.API_BASE_URL}/auth/bootstrap`, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${accessToken}`,

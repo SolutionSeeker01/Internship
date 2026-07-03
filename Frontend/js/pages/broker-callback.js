@@ -61,7 +61,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     try {
         // 3. Call backend endpoint to post authorization callback
-        const response = await fetch('http://127.0.0.1:8000/auth/broker/callback', {
+        const response = await fetch(`${window.API_BASE_URL}/auth/broker/callback`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${accessToken}`,

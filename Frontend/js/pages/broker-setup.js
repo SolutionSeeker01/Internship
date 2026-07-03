@@ -90,7 +90,7 @@ async function handleSetupSubmit(event) {
 
     try {
         // Step 2: Send setup request to backend
-        const response = await fetch('http://127.0.0.1:8000/auth/broker/setup', {
+        const response = await fetch(`${window.API_BASE_URL}/auth/broker/setup`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${accessToken}`,

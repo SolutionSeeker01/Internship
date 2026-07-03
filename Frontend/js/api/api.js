@@ -13,7 +13,7 @@
  * @returns {Promise<Array>} Promise resolving to candle list.
  */
 async function getCandles(symbol, interval, limit = 100, exchange = null) {
-    let url = `http://127.0.0.1:8000/candles/${symbol}?interval=${interval}&limit=${limit}`;
+    let url = `${window.API_BASE_URL}/candles/${symbol}?interval=${interval}&limit=${limit}`;
     if (exchange) {
         url += `&exchange=${exchange}`;
     }
@@ -29,7 +29,7 @@ async function getCandles(symbol, interval, limit = 100, exchange = null) {
  * @returns {Promise<Array>}
  */
 async function getInstruments() {
-    const response = await fetch("http://127.0.0.1:8000/instruments", { cache: 'no-store' });
+    const response = await fetch(`${window.API_BASE_URL}/instruments`, { cache: 'no-store' });
     if (!response.ok) {
         throw new Error(`Failed to fetch instruments: ${response.status}`);
     }
@@ -43,7 +43,7 @@ async function getInstruments() {
  * @returns {Promise<Array>}
  */
 async function searchInstruments(q, limit = 20) {
-    const response = await fetch(`http://127.0.0.1:8000/instruments/search?q=${encodeURIComponent(q)}&limit=${limit}`, { cache: 'no-store' });
+    const response = await fetch(`${window.API_BASE_URL}/instruments/search?q=${encodeURIComponent(q)}&limit=${limit}`, { cache: 'no-store' });
     if (!response.ok) {
         throw new Error(`Failed to search instruments: ${response.status}`);
     }
@@ -57,7 +57,7 @@ async function searchInstruments(q, limit = 20) {
  * @returns {Promise<object>}
  */
 async function createInstrument(instrumentData) {
-    const response = await fetch("http://127.0.0.1:8000/instruments", {
+    const response = await fetch(`${window.API_BASE_URL}/instruments`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json"
@@ -78,7 +78,7 @@ async function createInstrument(instrumentData) {
  */
 async function deleteInstrument(symbol, exchange) {
     if (!exchange) throw new Error("Exchange is mandatory to delete an instrument.");
-    const response = await fetch(`http://127.0.0.1:8000/instruments/${symbol}?exchange=${encodeURIComponent(exchange)}`, {
+    const response = await fetch(`${window.API_BASE_URL}/instruments/${symbol}?exchange=${encodeURIComponent(exchange)}`, {
         method: "DELETE"
     });
     if (!response.ok) {
@@ -96,7 +96,7 @@ async function deleteInstrument(symbol, exchange) {
  * @returns {Promise<object>}
  */
 async function getDashboardWatchlist(watchlistId = null) {
-    let url = "http://127.0.0.1:8000/dashboard/watchlist";
+    let url = `${window.API_BASE_URL}/dashboard/watchlist`;
     if (watchlistId) {
         url += `?watchlist_id=${watchlistId}`;
     }
@@ -114,7 +114,7 @@ async function getDashboardWatchlist(watchlistId = null) {
  * @returns {Promise<object>}
  */
 async function syncInstruments(exchanges, segments) {
-    const response = await fetch("http://127.0.0.1:8000/instruments/sync", {
+    const response = await fetch(`${window.API_BASE_URL}/instruments/sync`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json"
@@ -133,7 +133,7 @@ async function syncInstruments(exchanges, segments) {
  * @returns {Promise<object>}
  */
 async function clearAllInstruments() {
-    const response = await fetch("http://127.0.0.1:8000/instruments/all", {
+    const response = await fetch(`${window.API_BASE_URL}/instruments/all`, {
         method: "DELETE"
     });
     if (!response.ok) {
@@ -149,7 +149,7 @@ async function clearAllInstruments() {
  * @returns {Promise<object>}
  */
 async function bulkDeleteInstruments(instruments) {
-    const response = await fetch("http://127.0.0.1:8000/instruments/bulk-delete", {
+    const response = await fetch(`${window.API_BASE_URL}/instruments/bulk-delete`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json"
@@ -167,7 +167,7 @@ async function bulkDeleteInstruments(instruments) {
  * Watchlist API wrapper methods
  */
 async function getWatchlists() {
-    const response = await fetch("http://127.0.0.1:8000/watchlists", { cache: "no-store" });
+    const response = await fetch(`${window.API_BASE_URL}/watchlists`, { cache: "no-store" });
     if (!response.ok) {
         const errorDetail = await response.json();
         throw new Error(errorDetail.detail || "Failed to fetch watchlists.");
@@ -176,7 +176,7 @@ async function getWatchlists() {
 }
 
 async function createWatchlist(name) {
-    const response = await fetch("http://127.0.0.1:8000/watchlists", {
+    const response = await fetch(`${window.API_BASE_URL}/watchlists`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name })
@@ -189,7 +189,7 @@ async function createWatchlist(name) {
 }
 
 async function renameWatchlist(watchlistId, name) {
-    const response = await fetch(`http://127.0.0.1:8000/watchlists/${watchlistId}`, {
+    const response = await fetch(`${window.API_BASE_URL}/watchlists/${watchlistId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name })
@@ -202,7 +202,7 @@ async function renameWatchlist(watchlistId, name) {
 }
 
 async function deleteWatchlist(watchlistId) {
-    const response = await fetch(`http://127.0.0.1:8000/watchlists/${watchlistId}`, {
+    const response = await fetch(`${window.API_BASE_URL}/watchlists/${watchlistId}`, {
         method: "DELETE"
     });
     if (!response.ok) {
@@ -216,7 +216,7 @@ async function deleteWatchlist(watchlistId) {
  * Fetch all items assigned to a watchlist.
  */
 async function getWatchlistItems(watchlistId) {
-    const response = await fetch(`http://127.0.0.1:8000/watchlists/${watchlistId}/items`, { cache: "no-store" });
+    const response = await fetch(`${window.API_BASE_URL}/watchlists/${watchlistId}/items`, { cache: "no-store" });
     if (!response.ok) {
         const errorDetail = await response.json();
         throw new Error(errorDetail.detail || "Failed to fetch watchlist items.");
@@ -228,7 +228,7 @@ async function getWatchlistItems(watchlistId) {
  * Assigns an instrument into a watchlist.
  */
 async function addInstrumentToWatchlist(watchlistId, instrumentId) {
-    const response = await fetch(`http://127.0.0.1:8000/watchlists/${watchlistId}/items`, {
+    const response = await fetch(`${window.API_BASE_URL}/watchlists/${watchlistId}/items`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ instrument_id: instrumentId })
@@ -244,7 +244,7 @@ async function addInstrumentToWatchlist(watchlistId, instrumentId) {
  * Removes an instrument from a watchlist.
  */
 async function removeInstrumentFromWatchlist(watchlistId, instrumentId) {
-    const response = await fetch(`http://127.0.0.1:8000/watchlists/${watchlistId}/items/${instrumentId}`, {
+    const response = await fetch(`${window.API_BASE_URL}/watchlists/${watchlistId}/items/${instrumentId}`, {
         method: "DELETE"
     });
     if (!response.ok) {

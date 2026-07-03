@@ -44,7 +44,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 5. Fetch all users from API and populate the table
     async function loadUsers() {
         try {
-            const response = await fetch('http://127.0.0.1:8000/users', {
+            const response = await fetch(`${window.API_BASE_URL}/users`, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${accessToken}`,
@@ -195,7 +195,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 7. Update User Status call
     async function toggleUserStatus(userId, isActive) {
         try {
-            const response = await fetch(`http://127.0.0.1:8000/users/${userId}/status`, {
+            const response = await fetch(`${window.API_BASE_URL}/users/${userId}/status`, {
                 method: 'PATCH',
                 headers: {
                     'Authorization': `Bearer ${accessToken}`,
@@ -262,7 +262,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 if (window.confirm("Are you sure you want to reset this user's password?")) {
                     try {
-                        const response = await fetch(`http://127.0.0.1:8000/users/${currentResetUserId}/password`, {
+                        const response = await fetch(`${window.API_BASE_URL}/users/${currentResetUserId}/password`, {
                             method: 'PATCH',
                             headers: {
                                 'Authorization': `Bearer ${accessToken}`,
@@ -310,7 +310,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // Edit Mode Update
                 if (window.confirm("Are you sure you want to update this user?")) {
                     try {
-                        const response = await fetch(`http://127.0.0.1:8000/users/${currentEditingUserId}`, {
+                        const response = await fetch(`${window.API_BASE_URL}/users/${currentEditingUserId}`, {
                             method: 'PATCH',
                             headers: {
                                 'Authorization': `Bearer ${accessToken}`,
@@ -369,7 +369,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             try {
-                const response = await fetch('http://127.0.0.1:8000/users', {
+                const response = await fetch(`${window.API_BASE_URL}/users`, {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${accessToken}`,
