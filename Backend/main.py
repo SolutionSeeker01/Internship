@@ -60,12 +60,7 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to load subscription universe at startup: {e}")
         raise
 
-    # Load universe cache
-    try:
-        from market_data.universe import load_universe_cache
-        load_universe_cache()
-    except Exception as e:
-        logger.error(f"Failed to load UNIVERSE_CACHE at startup: {e}")
+
 
     # Market data service is now dynamically started upon successful broker callback verification.
     yield  # Hand over control to run the FastAPI server

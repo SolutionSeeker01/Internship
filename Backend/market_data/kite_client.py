@@ -271,6 +271,14 @@ def is_market_service_running() -> bool:
         return _market_service_running
 
 
+def get_active_broker_client() -> Optional[BaseBroker]:
+    """
+    Returns the active singleton broker adapter instance managed by the market data service.
+    """
+    global _active_broker
+    return _active_broker
+
+
 def start_market_data_service(loop: asyncio.AbstractEventLoop, api_key: str, access_token: str) -> None:
     """
     Starts the background KiteTicker service dynamically.

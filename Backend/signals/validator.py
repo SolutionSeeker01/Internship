@@ -13,7 +13,7 @@ logger = get_logger(__name__)
 MAX_LTP_DEVIATION_PCT = 10.0  # 10%
 
 
-from market_data.universe import is_symbol_in_universe, is_universe_cache_empty
+from database.instrument_repository import is_instrument_catalog_empty, find_instrument
 
 def validate_signal(signal: WebhookSignalRequest) -> tuple:
     """
@@ -33,6 +33,15 @@ def validate_signal(signal: WebhookSignalRequest) -> tuple:
     entry = signal.entry
     sl = signal.sl
     ts = signal.ts
+
+    # --- Layer 1: Market Service Connectivity Validation ---
+    from market_data.kite_client import is_market_service_running
+    if not is_market_service_running():
+        logger.warning("Rejected signal due to validation failure: MASTER_OFFLINE")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Signal rejected: No active MASTER broker session."
+        )
 
     logger.debug(f"Starting layered business rule validation for signal: {action} {symbol} Entry={entry} SL={sl} TS={ts}")
 
@@ -72,8 +81,8 @@ def validate_signal(signal: WebhookSignalRequest) -> tuple:
             )
 
     # --- Layer 5: Universe Cache Validation & Layer 6: Market Price Validation ---
-    cache_empty = is_universe_cache_empty()
-    symbol_in_cache = is_symbol_in_universe(symbol) if not cache_empty else False
+    cache_empty = is_instrument_catalog_empty()
+    symbol_in_cache = (find_instrument(symbol) is not None) if not cache_empty else False
 
     # Rule B: Cache populated, symbol missing from cache -> REJECT
     if not cache_empty and not symbol_in_cache:

@@ -44,6 +44,16 @@ class BaseBroker(ABC):
         pass
 
     @abstractmethod
+    def is_token_expired(self, last_updated_at: datetime) -> bool:
+        """
+        Determines whether the access token has expired according to the broker's specific session lifecycle.
+        
+        :param last_updated_at: The timestamp when the access token was generated/stored.
+        :return: True if the token is expired, False otherwise.
+        """
+        pass
+
+    @abstractmethod
     def get_historical_candles(
         self,
         instrument_token: int,

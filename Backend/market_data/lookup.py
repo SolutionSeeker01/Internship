@@ -21,65 +21,11 @@ CACHE_TTL_SECONDS = 30.0
 
 def get_master_broker():
     """
-    Resolves the MASTER user's broker configuration dynamically.
-    Falls back to the first available user if no MASTER user is configured.
+    Returns the currently active master broker client from the feed runner,
+    avoiding database queries and key decryption overhead.
     """
-    from database.db import SessionLocal
-    from models.user import User, UserRole
-    from models.broker_account import BrokerAccount
-    from security.encryption import decrypt_value
-    from services.brokers.factory import BrokerFactory
-
-    session = SessionLocal()
-    try:
-        # 1. Resolve Master User or Fallback
-        master_user = session.query(User).filter(User.role == UserRole.MASTER).first()
-        if not master_user:
-            master_user = session.query(User).first()
-
-        if not master_user:
-            logger.error("No platform users configured to establish broker validation context.")
-            return None
-
-        # 2. Retrieve Master BrokerAccount
-        # Look up all connected broker accounts for the master user
-        connected_accounts = session.query(BrokerAccount).filter(
-            BrokerAccount.user_id == master_user.id,
-            BrokerAccount.is_connected == True
-        ).all()
-
-        if len(connected_accounts) > 1:
-            logger.error(
-                f"Multiple connected broker accounts exist for the MASTER user '{master_user.username}'. "
-                "Unable to deterministically choose validation broker context."
-            )
-            return None
-        elif len(connected_accounts) == 1:
-            account = connected_accounts[0]
-        else:
-            # Fall back to the first available broker account configuration for this user
-            account = session.query(BrokerAccount).filter(
-                BrokerAccount.user_id == master_user.id
-            ).first()
-
-        if not account or not account.api_key:
-            logger.error(f"Broker credentials not configured for user '{master_user.username}'.")
-            return None
-
-        # 3. Decrypt credentials & instantiate
-        api_key = decrypt_value(account.api_key)
-        access_token = decrypt_value(account.access_token) if account.access_token else None
-
-        return BrokerFactory.get_broker(
-            account.broker,
-            api_key=api_key,
-            access_token=access_token
-        )
-    except Exception as e:
-        logger.error(f"Failed to initialize master validation broker: {e}")
-        return None
-    finally:
-        session.close()
+    from market_data.kite_client import get_active_broker_client
+    return get_active_broker_client()
 
 
 def get_market_price(symbol: str) -> Optional[float]:
@@ -90,9 +36,20 @@ def get_market_price(symbol: str) -> Optional[float]:
     Returns:
         Optional[float]: The last traded price if found, otherwise None.
     """
-    from market_data.universe import get_symbol_exchange
+    from database.instrument_repository import find_instrument
     sym_upper = symbol.upper().strip()
-    exch_resolved = get_symbol_exchange(sym_upper)
+    
+    # Resolve exchange from PostgreSQL first
+    inst = find_instrument(sym_upper)
+    if inst and inst.get("exchange"):
+        exch_resolved = inst["exchange"].upper().strip()
+    else:
+        # Fallback to derivative suffix check matching previous get_symbol_exchange behavior
+        import re
+        if re.search(r'\d+[A-Z]*FUT$', sym_upper) or re.search(r'\d+[A-Z]*[CP]E$', sym_upper):
+            exch_resolved = "NFO"
+        else:
+            exch_resolved = "NSE"
     now = time.time()
     
     # 1. Check live memory store for resolved exchange LTP first (Fast path)

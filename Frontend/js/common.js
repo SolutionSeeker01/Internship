@@ -9,8 +9,21 @@ console.info("[Common] Module loaded.");
 /**
  * Handle user logout logic.
  */
-function handleLogout() {
+async function handleLogout() {
     if (window.confirm("Are you sure you want to logout?")) {
+        const accessToken = localStorage.getItem('access_token');
+        if (accessToken) {
+            try {
+                await fetch(`${window.API_BASE_URL}/auth/logout`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`
+                    }
+                });
+            } catch (e) {
+                console.error("Failed to notify backend on logout:", e);
+            }
+        }
         localStorage.removeItem("access_token");
         localStorage.removeItem("user");
         window.location.replace("login.html");

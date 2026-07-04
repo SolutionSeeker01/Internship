@@ -278,3 +278,36 @@ class ZerodhaBroker(BaseBroker):
         except Exception as e:
             logger.error(f"Failed to fetch Zerodha LTP: {e}")
             raise
+
+    def is_token_expired(self, last_updated_at: datetime) -> bool:
+        """
+        Determines whether the Zerodha access token has expired.
+        Zerodha tokens remain valid until approximately the next trading day around 07:30 AM IST.
+        """
+        if not last_updated_at:
+            return True
+
+        from zoneinfo import ZoneInfo
+        from datetime import time
+        import pytz
+
+        ist = ZoneInfo("Asia/Kolkata")
+        now_ist = datetime.now(ist)
+
+        # Convert last_updated_at to aware IST datetime
+        if last_updated_at.tzinfo is None:
+            last_updated_ist = pytz.utc.localize(last_updated_at).astimezone(ist)
+        else:
+            last_updated_ist = last_updated_at.astimezone(ist)
+
+        # Check day difference in IST
+        days_delta = (now_ist.date() - last_updated_ist.date()).days
+
+        if days_delta == 0:
+            return False  # Same day, still valid
+        elif days_delta == 1:
+            # Next day. Valid until 07:30 AM IST.
+            cutoff_time = time(7, 30)
+            return now_ist.time() >= cutoff_time
+        else:
+            return True  # Older than 1 day, expired.

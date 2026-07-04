@@ -73,10 +73,24 @@ async def bootstrap(current_user: User = Depends(get_current_user)):
         if not account or not account.api_key or not account.api_secret:
             return BootstrapResponse(state=BootstrapState.BROKER_SETUP_REQUIRED)
 
-        # Step 3: Check if access token is configured and fresh for today's trading session
-        IST = ZoneInfo("Asia/Kolkata")
-        today_ist = datetime.now(IST).date()
-        if account.access_token and account.last_login_trading_day == today_ist:
+        # Step 3: Check if access token is configured and fresh using broker-specific expiry policy
+        token_expired = True
+        if account.access_token:
+            try:
+                from services.brokers.factory import BrokerFactory
+                api_key_check = decrypt_value(account.api_key)
+                access_token_check = decrypt_value(account.access_token)
+                broker = BrokerFactory.get_broker(
+                    account.broker,
+                    api_key=api_key_check,
+                    access_token=access_token_check
+                )
+                token_expired = broker.is_token_expired(account.updated_at)
+            except Exception as e:
+                logger.warning(f"Error checking token expiration for broker {account.broker}: {e}")
+                token_expired = True
+
+        if account.access_token and not token_expired:
             # If the background market service has stopped (e.g. backend restarted), auto-start it
             if not is_market_service_running():
                 try:
@@ -394,6 +408,35 @@ async def broker_callback(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to complete broker authentication"
         )
+    finally:
+        session.close()
+
+
+@router.post("/logout", status_code=status.HTTP_200_OK)
+def logout(current_user: User = Depends(get_current_user)):
+    """
+    Deactivates the broker connection, terminates active websocket feeds,
+    and invalidates the session upon user logout.
+    """
+    session = SessionLocal()
+    try:
+        # 1. Terminate the background market feed service
+        from market_data.kite_client import stop_market_data_service
+        stop_market_data_service()
+        
+        # 2. Deactivate the broker account connection in the database
+        account = session.query(BrokerAccount).filter(
+            BrokerAccount.user_id == current_user.id,
+            BrokerAccount.broker == current_user.active_broker
+        ).first()
+        if account:
+            account.is_connected = False
+            session.commit()
+            
+        return {"status": "success", "message": "Logged out successfully."}
+    except Exception as e:
+        session.rollback()
+        raise HTTPException(status_code=500, detail=f"Logout failed: {str(e)}")
     finally:
         session.close()
 

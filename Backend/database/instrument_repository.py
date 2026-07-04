@@ -1,3 +1,4 @@
+from typing import Optional
 from sqlalchemy.sql import text
 from database.db import SessionLocal
 from utils.logger import get_logger
@@ -565,6 +566,53 @@ def get_instrument_by_id(instrument_id: int) -> dict:
     except Exception as e:
         logger.error(f"Error fetching instrument by id {instrument_id}: {e}")
         return None
+    finally:
+        session.close()
+
+
+def find_instrument(symbol: str, broker: Optional[str] = None) -> Optional[dict]:
+    """
+    Finds a single instrument metadata record matching the symbol and optional broker scope.
+    """
+    session = SessionLocal()
+    try:
+        query = """
+            SELECT id, symbol, token, exchange, name, segment, broker, instrument_category
+            FROM instruments
+            WHERE UPPER(symbol) = :symbol
+        """
+        params = {"symbol": symbol.upper().strip()}
+        if broker:
+            query += " AND UPPER(broker) = :broker"
+            params["broker"] = broker.upper().strip()
+        
+        # Order by ID to return deterministically
+        query += " ORDER BY id ASC LIMIT 1;"
+        
+        res = session.execute(text(query), params)
+        row = res.fetchone()
+        if row:
+            return dict(row._mapping)
+        return None
+    except Exception as e:
+        logger.error(f"Error in find_instrument for symbol={symbol}, broker={broker}: {e}")
+        return None
+    finally:
+        session.close()
+
+
+def is_instrument_catalog_empty() -> bool:
+    """
+    Checks if the instruments table in the database is empty.
+    """
+    session = SessionLocal()
+    try:
+        res = session.execute(text("SELECT COUNT(*) FROM instruments;"))
+        count = res.scalar() or 0
+        return count == 0
+    except Exception as e:
+        logger.error(f"Error checking if instrument catalog is empty: {e}")
+        return True
     finally:
         session.close()
 
