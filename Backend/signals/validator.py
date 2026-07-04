@@ -4,7 +4,7 @@ from datetime import datetime, timezone, timedelta
 from fastapi import HTTPException, status
 from utils.logger import get_logger
 from signals.schemas import WebhookSignalRequest
-from market_data.lookup import get_market_price, BrokerUnavailableException
+from market_data.lookup import get_market_price, BrokerUnavailableException, InvalidSymbolException
 from database.signal_repository import check_duplicate_signal
 
 logger = get_logger(__name__)
@@ -80,25 +80,15 @@ def validate_signal(signal: WebhookSignalRequest) -> tuple:
                 detail="Invalid stoploss: Stoploss must be strictly above entry price for SELL."
             )
 
-    # --- Layer 5: Universe Cache Validation & Layer 6: Market Price Validation ---
-    cache_empty = is_instrument_catalog_empty()
-    symbol_in_cache = (find_instrument(symbol) is not None) if not cache_empty else False
-
-    # Rule B: Cache populated, symbol missing from cache -> REJECT
-    if not cache_empty and not symbol_in_cache:
-        logger.warning(f"Rejected signal due to validation failure: SYMBOL_NOT_IN_UNIVERSE for symbol '{symbol}'")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid symbol. Symbol not found in instrument universe."
-        )
-
+    # --- Layer 5: Market Price and Symbol Validation (Primary) ---
     validation_status = "VALIDATED"
     validation_reason = None
+    cache_empty = is_instrument_catalog_empty()
 
     try:
         current_ltp = get_market_price(symbol)
         if current_ltp is not None and current_ltp > 0:
-            # Rule C / Normal: LTP retrieved successfully, perform sanity checks
+            # Case 1: LTP retrieved successfully, perform sanity checks
             deviation = abs(entry - current_ltp) / current_ltp * 100
             if deviation > MAX_LTP_DEVIATION_PCT:
                 logger.warning("Rejected signal due to validation failure: ENTRY_LTP_MISMATCH")
@@ -107,30 +97,42 @@ def validate_signal(signal: WebhookSignalRequest) -> tuple:
                     detail="Entry price too far from market price"
                 )
         else:
-            # get_market_price returned None (broker is online but symbol lookup returned nothing)
-            if cache_empty:
-                # Rule C (LTP lookup failed when online) -> REJECT
+            # get_market_price returned None (symbol lookup explicitly failed on an online broker)
+            # Fall back to PostgreSQL database to check if symbol is valid locally
+            symbol_in_db = (find_instrument(symbol) is not None) if not cache_empty else False
+            if cache_empty or not symbol_in_db:
+                # Symbol is completely unknown to both the broker and database -> REJECT
                 logger.warning(f"Rejected signal due to validation failure: SYMBOL_NOT_FOUND_ON_BROKER for symbol '{symbol}'")
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Invalid symbol. Symbol not found by broker."
                 )
             else:
-                # Rule A: Cache populated, symbol exists in cache, LTP is None -> PARTIAL
-                logger.warning(f"LTP unavailable for symbol '{symbol}'. Entering partial validation mode.")
+                # Symbol is locally known but broker returned empty -> PARTIAL
+                logger.warning(f"LTP unavailable for symbol '{symbol}' (found in DB). Entering partial validation mode.")
                 validation_status = "PARTIAL"
                 validation_reason = "LTP_UNAVAILABLE"
 
+    except InvalidSymbolException:
+        # Invalid symbol returned explicitly by the broker -> REJECT immediately (do not check DB)
+        logger.warning(f"Rejected signal due to validation failure: INVALID_SYMBOL_ON_BROKER for symbol '{symbol}'")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid symbol. Symbol not found by broker."
+        )
     except BrokerUnavailableException:
-        if cache_empty:
-            # Rule D: Cache empty and broker is unavailable -> REJECT
+        # Case 2: Broker is offline or timed out
+        # Fall back to PostgreSQL to verify if the symbol is valid locally
+        symbol_in_db = (find_instrument(symbol) is not None) if not cache_empty else False
+        if cache_empty or not symbol_in_db:
+            # Broker is offline and symbol is unknown locally -> REJECT
             logger.warning(f"Rejected signal: Instrument universe unavailable and broker verification unavailable for symbol '{symbol}'")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Unable to validate signal. Instrument universe unavailable and broker verification unavailable."
             )
         else:
-            # Rule A: Cache populated, symbol exists in cache, broker throws error -> PARTIAL
+            # Broker is offline but symbol is known locally -> PARTIAL validation
             logger.warning(f"LTP lookup failed (broker unavailable) for symbol '{symbol}' in cache. Entering partial validation mode.")
             validation_status = "PARTIAL"
             validation_reason = "LTP_UNAVAILABLE"
@@ -138,7 +140,8 @@ def validate_signal(signal: WebhookSignalRequest) -> tuple:
         raise
     except Exception as e:
         logger.error(f"Unexpected error during LTP validation for {symbol}: {e}")
-        if cache_empty:
+        symbol_in_db = (find_instrument(symbol) is not None) if not cache_empty else False
+        if cache_empty or not symbol_in_db:
             logger.warning(f"Rejected signal due to unexpected lookup failure: {e}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
