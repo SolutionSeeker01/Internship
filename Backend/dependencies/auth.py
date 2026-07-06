@@ -4,6 +4,7 @@ from jose.exceptions import JWTError
 
 from database.db import SessionLocal
 from models.user import User
+from models.broker_account import BrokerAccount
 from security.jwt_handler import decode_access_token
 
 # Initialize OAuth2 password bearer scheme pointing to our login endpoint
@@ -48,8 +49,12 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
         if not user.is_active:
             raise credentials_exception
             
-        # Attach session active broker context dynamically to current user
-        user.active_broker = payload.get("active_broker", "ZERODHA")
+        # Dynamically query database for connected broker account to retrieve actual active broker
+        account = session.query(BrokerAccount).filter(
+            BrokerAccount.user_id == user.id,
+            BrokerAccount.is_connected == True
+        ).first()
+        user.active_broker = account.broker if account else "ZERODHA"
             
         return user
     except ValueError:

@@ -94,18 +94,9 @@ def get_market_price(symbol: str) -> Optional[float]:
                 return price
                         
         logger.warning(f"LTP lookup returned no valid price for {sym_upper} on {exch_resolved}.")
+    except (InvalidSymbolException, BrokerUnavailableException):
+        raise
     except Exception as e:
-        # Check if the exception represents an invalid symbol from the broker
-        try:
-            from kiteconnect.exceptions import InputException
-            if isinstance(e, InputException) or "invalid" in str(e).lower() or "not found" in str(e).lower():
-                logger.warning(f"Broker rejected symbol {sym_upper} as invalid: {e}")
-                raise InvalidSymbolException(str(e))
-        except ImportError:
-            # Fallback if kiteconnect is not installed in the current environment
-            if "invalid" in str(e).lower() or "not found" in str(e).lower():
-                raise InvalidSymbolException(str(e))
-        
         logger.warning(f"Failed authoritative live market price lookup for {sym_upper} ({exch_resolved}): {e}")
         raise BrokerUnavailableException(str(e))
         

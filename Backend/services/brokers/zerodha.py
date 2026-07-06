@@ -277,7 +277,11 @@ class ZerodhaBroker(BaseBroker):
             return kite.ltp(query_symbols)
         except Exception as e:
             logger.error(f"Failed to fetch Zerodha LTP: {e}")
-            raise
+            from kiteconnect.exceptions import InputException
+            from market_data.lookup import InvalidSymbolException, BrokerUnavailableException
+            if isinstance(e, InputException) or "invalid" in str(e).lower() or "not found" in str(e).lower():
+                raise InvalidSymbolException(str(e))
+            raise BrokerUnavailableException(str(e))
 
     def is_token_expired(self, last_updated_at: datetime) -> bool:
         """

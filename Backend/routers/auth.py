@@ -14,7 +14,6 @@ from dependencies.auth import get_current_user
 from models.user import User
 from models.broker_account import BrokerAccount
 from database.db import SessionLocal
-from kiteconnect import KiteConnect
 from market_data.kite_client import start_market_data_service, is_market_service_running, restart_market_data_service
 import asyncio
 from services.brokers.factory import BrokerFactory
@@ -35,12 +34,21 @@ def login(payload: LoginRequest):
             detail="Invalid username or password"
         )
     
+    # Resolve user's active broker or default to ZERODHA
+    session = SessionLocal()
+    try:
+        account = session.query(BrokerAccount).filter(BrokerAccount.user_id == user.id).first()
+        user.active_broker = account.broker if account else "ZERODHA"
+    finally:
+        session.close()
+
     # Generate signed JWT token incorporating user claims
     # user.role is Enum type, we export its raw string value using .value
     access_token = create_access_token(
         user_id=user.id,
         username=user.username,
-        role=user.role.value
+        role=user.role.value,
+        active_broker=user.active_broker
     )
     
     # Return explicit schema-driven Pydantic response model

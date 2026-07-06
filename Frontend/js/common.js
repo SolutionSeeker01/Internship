@@ -199,19 +199,62 @@ document.addEventListener('DOMContentLoaded', () => {
             btnLogout.addEventListener("click", handleLogout);
         }
 
-        // Check role permission status for User Management visibility
-        const userStr = localStorage.getItem("user");
-        if (userStr) {
-            try {
-                const userObj = JSON.parse(userStr);
-                if (userObj && userObj.role === "MASTER" && btnUsers) {
-                    btnUsers.style.display = "flex";
-                } else if (btnUsers) {
-                    btnUsers.parentNode.style.display = "none"; // Hide list item completely
+        // Create Active Broker Badge dynamically in header
+        const headerRight = header.querySelector('.header-right');
+        if (headerRight) {
+            const brokerBadge = document.createElement('div');
+            brokerBadge.id = 'header-active-broker-container';
+            brokerBadge.className = 'active-broker-badge';
+            brokerBadge.style.display = 'flex';
+            brokerBadge.style.alignItems = 'center';
+            brokerBadge.style.gap = '6px';
+            brokerBadge.style.marginRight = '16px';
+            brokerBadge.style.padding = '4px 8px';
+            brokerBadge.style.borderRadius = '4px';
+            brokerBadge.style.background = '#f4f4f5';
+            brokerBadge.style.border = '1px solid #e4e4e7';
+            brokerBadge.style.fontSize = '12px';
+            brokerBadge.style.fontWeight = '600';
+            
+            brokerBadge.innerHTML = `
+                <span style="color: #71717a; font-weight: 500;">Broker:</span>
+                <span id="header-active-broker-name" style="text-transform: uppercase;">Loading...</span>
+            `;
+            headerRight.insertBefore(brokerBadge, headerRight.firstChild);
+        }
+
+        // Fetch fresh user profile details dynamically
+        const accessToken = localStorage.getItem("access_token");
+        if (accessToken) {
+            fetch(`${window.API_BASE_URL}/auth/me`, {
+                headers: { 'Authorization': `Bearer ${accessToken}` }
+            })
+            .then(res => {
+                if (res.status === 401) {
+                    handleLogout();
+                    return;
                 }
-            } catch (e) {
-                console.error("Failed to parse user details:", e);
-            }
+                return res.json();
+            })
+            .then(userObj => {
+                if (userObj) {
+                    localStorage.setItem("user", JSON.stringify(userObj));
+                    
+                    const usernameEl = document.getElementById("header-username");
+                    if (usernameEl) usernameEl.textContent = userObj.username;
+                    
+                    const brokerNameEl = document.getElementById("header-active-broker-name");
+                    if (brokerNameEl) {
+                        brokerNameEl.textContent = userObj.active_broker;
+                        brokerNameEl.style.color = userObj.active_broker === 'ZERODHA' ? '#ea580c' : '#0284c7';
+                    }
+                    
+                    if (userObj.role === "MASTER" && btnUsers) {
+                        btnUsers.style.display = "flex";
+                    }
+                }
+            })
+            .catch(e => console.error("Failed to load user details:", e));
         }
     }
 

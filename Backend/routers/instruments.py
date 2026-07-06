@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field, validator
 import re
 import threading
 from datetime import date
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from dependencies.auth import get_current_user
 from models.user import User
@@ -25,7 +25,6 @@ from database.instrument_repository import (
     get_instrument_by_symbol as db_get_instrument_by_symbol
 )
 from market_data.subscriptions import reload_instruments
-from market_data.connection import get_kite
 from utils.logger import get_logger
 from schemas.instrument_delete import BulkDeleteRequest
 
@@ -79,8 +78,8 @@ class InstrumentCreate(BaseModel):
     exchange: str = Field(..., min_length=1, max_length=20)
     name: str = Field(..., min_length=1, max_length=100)
     segment: str = Field(..., min_length=1, max_length=50)
-    broker: str = Field(..., min_length=1, max_length=50)
-    instrument_category: str = Field(default="STOCK")
+    broker: Optional[str] = Field(default=None)
+    instrument_category: Optional[str] = Field(default=None)
 
     @validator("symbol")
     def validate_symbol(cls, v):
@@ -91,6 +90,8 @@ class InstrumentCreate(BaseModel):
 
     @validator("instrument_category")
     def validate_category(cls, v):
+        if v is None:
+            return None
         v_upper = v.upper().strip()
         allowed = {"INDEX", "STOCK", "FUTURE", "OPTION", "ETF"}
         if v_upper not in allowed:
@@ -121,7 +122,22 @@ def add_instrument(payload: InstrumentCreate, current_user: User = Depends(get_c
     """
     Creates/saves a new instrument in PostgreSQL after metadata and live market validation.
     """
-    logger.info(f"POST /instruments: {payload.symbol} ({payload.instrument_category})")
+    payload.broker = current_user.active_broker
+    SEGMENT_TO_CATEGORY_MAP = {
+        "EQ": "STOCK",
+        "BE": "STOCK",
+        "SME": "STOCK",
+        "IND": "INDEX",
+        "FUT": "FUTURE",
+        "CE": "OPTION",
+        "PE": "OPTION",
+        "ETF": "ETF",
+        "OPT": "OPTION",
+    }
+    segment_upper = payload.segment.upper().strip()
+    payload.instrument_category = SEGMENT_TO_CATEGORY_MAP.get(segment_upper, "STOCK")
+
+    logger.info(f"POST /instruments: {payload.symbol} ({payload.instrument_category}) via broker {payload.broker}")
 
     # Resolve active broker instance
     session = SessionLocal()
