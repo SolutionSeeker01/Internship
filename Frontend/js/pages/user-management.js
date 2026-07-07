@@ -39,6 +39,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         }, 5000);
     }
 
+    function getErrorMessage(errorData, fallback = 'Operation failed') {
+        if (!errorData || !errorData.detail) return fallback;
+        if (Array.isArray(errorData.detail)) {
+            return errorData.detail.map(err => err.msg).join(', ');
+        }
+        return errorData.detail;
+    }
+
     let cachedUsersList = [];
 
     // 5. Fetch all users from API and populate the table
@@ -212,7 +220,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.detail || 'Failed to update user status');
+                throw new Error(getErrorMessage(errorData, 'Failed to update user status'));
             }
 
             showNotification(`User status updated successfully`, 'success');
@@ -282,10 +290,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                         if (!response.ok) {
                             const errorData = await response.json();
-                            throw new Error(errorData.detail || 'Failed to reset password');
+                            throw new Error(getErrorMessage(errorData, 'Failed to reset password'));
                         }
 
                         showNotification('Password reset successful', 'success');
+                        alert('Password reset successful!');
                         
                         // Check if MASTER reset their own password
                         if (currentResetUserId === currentUser.id) {
@@ -331,7 +340,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                         if (!response.ok) {
                             const errorData = await response.json();
-                            throw new Error(errorData.detail || 'Failed to update user details');
+                            throw new Error(getErrorMessage(errorData, 'Failed to update user details'));
                         }
 
                         showNotification('User updated successfully', 'success');
@@ -347,6 +356,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Create Mode Submission
             const password = document.getElementById('password').value;
             const confirmPassword = document.getElementById('confirm-password').value;
+
+            // Username Alphanumeric check (letters and numbers only, no spaces/special characters)
+            const isAlphanumeric = /^[a-zA-Z0-9]+$/.test(username);
+            if (!isAlphanumeric) {
+                showNotification('Username must be alphanumeric (letters and numbers only, no spaces or special characters).', 'error');
+                return;
+            }
 
             // Password Confirmation match check
             if (password !== confirmPassword) {
@@ -393,10 +409,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 if (!response.ok) {
                     const errorData = await response.json();
-                    throw new Error(errorData.detail || 'Failed to create user');
+                    throw new Error(getErrorMessage(errorData, 'Failed to create user'));
                 }
 
                 showNotification('User created successfully', 'success');
+                alert('User created successfully!');
                 createForm.reset();
                 loadUsers();
             } catch (e) {
