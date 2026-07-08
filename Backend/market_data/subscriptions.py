@@ -150,25 +150,7 @@ def reload_instruments() -> None:
 
 
 
-def rebuild_universe_cache() -> None:
-    """
-    Utility helper that pulls all database instruments and recreates
-    the universe_cache.json payload containing symbol metadata mappings.
-    """
-    try:
-        from database.instrument_repository import get_all_instruments
-        from market_data.universe import save_universe_cache
-        instruments = get_all_instruments()
-        mapping = {
-            inst["symbol"]: {
-                "exchange": inst["exchange"],
-                "instrument_token": inst["token"]
-            } for inst in instruments
-        }
-        save_universe_cache(mapping)
-        logger.info(f"Successfully rebuilt universe_cache.json from database with {len(mapping)} instruments.")
-    except Exception as e:
-        logger.error(f"Failed to rebuild universe_cache.json: {e}")
+
 
 def load_instruments() -> None:
     """

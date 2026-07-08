@@ -2,9 +2,11 @@ from services.brokers.base import BaseBroker
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from kiteconnect import KiteConnect
+from kiteconnect.exceptions import KiteException
 import requests
 from schemas.candles import HistoricalCandle
 from utils.logger import get_logger
+from exceptions import ValidationException, BrokerAdapterException
 
 logger = get_logger(__name__)
 
@@ -25,7 +27,7 @@ class ZerodhaBroker(BaseBroker):
         """
         # Validate presence
         if not self.api_key:
-            raise ValueError("API key not configured")
+            raise ValidationException("API key not configured")
 
         return (
             f"{self.LOGIN_URL}"
@@ -40,10 +42,10 @@ class ZerodhaBroker(BaseBroker):
         """
         request_token = params.get("request_token")
         if not request_token:
-            raise ValueError("request_token is required in params")
+            raise ValidationException("request_token is required in params")
             
         if not self.api_key or not self.api_secret:
-            raise ValueError("API credentials (api_key/api_secret) are not configured on this provider.")
+            raise ValidationException("API credentials (api_key/api_secret) are not configured on this provider.")
 
         try:
             kite = KiteConnect(api_key=self.api_key)
@@ -57,8 +59,8 @@ class ZerodhaBroker(BaseBroker):
                 "broker_user_id": session_data.get("user_id"),
                 "refresh_token": None
             }
-        except Exception:
-            raise ValueError("Zerodha authentication failed. Please check your credentials and request token.")
+        except (KiteException, requests.exceptions.RequestException) as e:
+            raise BrokerAdapterException("Zerodha authentication failed. Please check your credentials and request token.", original_exception=e)
 
     def is_session_valid(self, api_key: str, access_token: str) -> bool:
         """
@@ -77,14 +79,14 @@ class ZerodhaBroker(BaseBroker):
         Retrieves historical candlestick data for the specified instrument token.
         """
         if not self.api_key or not self.access_token:
-            raise ValueError("API credentials (api_key/access_token) are not configured on this provider.")
+            raise ValidationException("API credentials (api_key/access_token) are not configured on this provider.")
 
         try:
             kite = KiteConnect(api_key=self.api_key, timeout=30)
             kite.set_access_token(self.access_token)
-        except Exception as e:
+        except (KiteException, requests.exceptions.RequestException) as e:
             logger.error(f"Failed to initialize Kite client session: {e}")
-            raise ValueError("Failed to initialize connection to broker.")
+            raise BrokerAdapterException("Failed to initialize connection to broker.", original_exception=e)
 
         # Fetch historical candles from Zerodha with retry logic
         historical_data = None
@@ -106,13 +108,13 @@ class ZerodhaBroker(BaseBroker):
                 )
             except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e2:
                 logger.error(f"Timeout/Connection error fetching historical data for token {instrument_token} on retry: {e2}")
-                raise ValueError("Timeout retrieving historical data from broker.")
-            except Exception as e2:
+                raise BrokerAdapterException("Timeout retrieving historical data from broker.", original_exception=e2)
+            except (KiteException, requests.exceptions.RequestException) as e2:
                 logger.error(f"Unexpected error fetching historical data for token {instrument_token} on retry: {e2}")
-                raise ValueError("Unexpected broker error during retry.")
-        except Exception as e:
+                raise BrokerAdapterException("Unexpected broker error during retry.", original_exception=e2)
+        except (KiteException, requests.exceptions.RequestException) as e:
             logger.error(f"Failed to fetch historical candles from Zerodha for token {instrument_token}: {e}")
-            raise ValueError("Failed to retrieve historical candlestick data from broker.")
+            raise BrokerAdapterException("Failed to retrieve historical candlestick data from broker.", original_exception=e)
 
         # Normalize responses
         normalized_candles = []
@@ -135,7 +137,7 @@ class ZerodhaBroker(BaseBroker):
         from kiteconnect import KiteTicker
 
         if not self.api_key or not self.access_token:
-            raise ValueError("API credentials (api_key/access_token) are required for starting feed.")
+            raise ValidationException("API credentials (api_key/access_token) are required for starting feed.")
 
         if self.is_feed_running():
             logger.warning("Zerodha feed is already running.")
@@ -155,11 +157,11 @@ class ZerodhaBroker(BaseBroker):
 
             logger.info("Connecting to Zerodha KiteTicker WebSocket...")
             self._kws.connect(threaded=True)
-        except Exception as e:
+        except (KiteException, requests.exceptions.RequestException, ConnectionError) as e:
             logger.critical(f"Failed to start Zerodha KiteTicker: {e}", exc_info=True)
             self._kws = None
             self._on_tick_callback = None
-            raise
+            raise BrokerAdapterException("Failed to start Zerodha KiteTicker feed.", original_exception=e)
 
     def stop_feed(self) -> None:
         """
@@ -250,7 +252,7 @@ class ZerodhaBroker(BaseBroker):
         Fetches the master instrument list from Zerodha.
         """
         if not self.api_key:
-            raise ValueError("API key is not configured on this provider.")
+            raise ValidationException("API key is not configured on this provider.")
 
         try:
             kite = KiteConnect(api_key=self.api_key, timeout=30)
@@ -259,23 +261,23 @@ class ZerodhaBroker(BaseBroker):
             if exchange:
                 return kite.instruments(exchange=exchange)
             return kite.instruments()
-        except Exception as e:
+        except (KiteException, requests.exceptions.RequestException) as e:
             logger.error(f"Failed to fetch Zerodha instruments metadata: {e}")
-            raise
+            raise BrokerAdapterException("Failed to fetch Zerodha instruments metadata.", original_exception=e)
 
     def get_ltp(self, query_symbols: List[str]) -> Dict[str, Dict[str, Any]]:
         """
         Queries the last traded price for the given symbols from Zerodha.
         """
         if not self.api_key:
-            raise ValueError("API key is not configured on this provider.")
+            raise ValidationException("API key is not configured on this provider.")
 
         try:
             kite = KiteConnect(api_key=self.api_key, timeout=30)
             if self.access_token:
                 kite.set_access_token(self.access_token)
             return kite.ltp(query_symbols)
-        except Exception as e:
+        except (KiteException, requests.exceptions.RequestException) as e:
             logger.error(f"Failed to fetch Zerodha LTP: {e}")
             from kiteconnect.exceptions import InputException
             from market_data.lookup import InvalidSymbolException, BrokerUnavailableException
