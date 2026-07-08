@@ -1,6 +1,8 @@
 from sqlalchemy.sql import text
 from database.db import SessionLocal
 from utils.logger import get_logger
+from sqlalchemy.exc import SQLAlchemyError
+from exceptions import DatabaseException
 
 logger = get_logger(__name__)
 
@@ -30,10 +32,10 @@ def init_db() -> None:
         """))
         session.commit()
         logger.info("Database tables 'watchlists' and 'watchlist_items' initialized and verified.")
-    except Exception as e:
+    except SQLAlchemyError as e:
         session.rollback()
         logger.exception(f"Failed to initialize database schemas: {e}")
-        raise
+        raise DatabaseException("Failed to initialize database schemas.", original_exception=e)
     finally:
         session.close()
 
@@ -50,9 +52,9 @@ def get_all_watchlists() -> list:
         """))
         rows = result.fetchall()
         return [dict(row._mapping) for row in rows]
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.error(f"Error fetching watchlists: {e}")
-        return []
+        raise DatabaseException("Error fetching watchlists from database.", original_exception=e)
     finally:
         session.close()
 
@@ -68,9 +70,9 @@ def get_watchlist_by_id(watchlist_id: int) -> dict:
         )
         row = result.fetchone()
         return dict(row._mapping) if row else None
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.error(f"Error fetching watchlist by id {watchlist_id}: {e}")
-        return None
+        raise DatabaseException(f"Error fetching watchlist by id {watchlist_id} from database.", original_exception=e)
     finally:
         session.close()
 
@@ -87,10 +89,10 @@ def create_watchlist(name: str) -> dict:
         row = result.fetchone()
         session.commit()
         return dict(row._mapping) if row else None
-    except Exception as e:
+    except SQLAlchemyError as e:
         session.rollback()
         logger.error(f"Failed to create watchlist: {e}")
-        return None
+        raise DatabaseException("Failed to create watchlist in database.", original_exception=e)
     finally:
         session.close()
 
@@ -107,10 +109,10 @@ def rename_watchlist(watchlist_id: int, name: str) -> dict:
         row = result.fetchone()
         session.commit()
         return dict(row._mapping) if row else None
-    except Exception as e:
+    except SQLAlchemyError as e:
         session.rollback()
         logger.error(f"Failed to rename watchlist {watchlist_id}: {e}")
-        return None
+        raise DatabaseException(f"Failed to rename watchlist {watchlist_id} in database.", original_exception=e)
     finally:
         session.close()
 
@@ -126,10 +128,10 @@ def delete_watchlist(watchlist_id: int) -> bool:
         )
         session.commit()
         return result.rowcount > 0
-    except Exception as e:
+    except SQLAlchemyError as e:
         session.rollback()
         logger.error(f"Failed to delete watchlist {watchlist_id}: {e}")
-        return False
+        raise DatabaseException(f"Failed to delete watchlist {watchlist_id} from database.", original_exception=e)
     finally:
         session.close()
 
@@ -151,9 +153,9 @@ def get_watchlist_items(watchlist_id: int) -> list:
         """), {"watchlist_id": watchlist_id})
         rows = result.fetchall()
         return [dict(row._mapping) for row in rows]
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.error(f"Error fetching items for watchlist {watchlist_id}: {e}")
-        return []
+        raise DatabaseException(f"Error fetching items for watchlist {watchlist_id} from database.", original_exception=e)
     finally:
         session.close()
 
@@ -190,10 +192,10 @@ def add_instrument_to_watchlist(watchlist_id: int, symbol_or_id: any, exchange: 
         })
         session.commit()
         return True
-    except Exception as e:
+    except SQLAlchemyError as e:
         session.rollback()
         logger.error(f"Error adding instrument to watchlist: {e}")
-        return False
+        raise DatabaseException("Error adding instrument to watchlist in database.", original_exception=e)
     finally:
         session.close()
 
@@ -227,10 +229,10 @@ def remove_instrument_from_watchlist(watchlist_id: int, symbol_or_id: any, excha
         })
         session.commit()
         return result.rowcount > 0
-    except Exception as e:
+    except SQLAlchemyError as e:
         session.rollback()
         logger.error(f"Error removing instrument from watchlist: {e}")
-        return False
+        raise DatabaseException("Error removing instrument from watchlist in database.", original_exception=e)
     finally:
         session.close()
 
@@ -247,9 +249,9 @@ def get_watchlist_items_count(watchlist_id: int) -> int:
             WHERE watchlist_id = :watchlist_id;
         """), {"watchlist_id": watchlist_id})
         return result.scalar() or 0
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.error(f"Error counting items for watchlist {watchlist_id}: {e}")
-        return 0
+        raise DatabaseException(f"Error counting items for watchlist {watchlist_id} from database.", original_exception=e)
     finally:
         session.close()
 
@@ -282,9 +284,9 @@ def check_instrument_in_watchlist(watchlist_id: int, symbol_or_id: any, exchange
             "exchange": exch.upper().strip() if exch else "NSE"
         })
         return result.scalar() or False
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.error(f"Error checking duplicate for watchlist {watchlist_id}: {e}")
-        return False
+        raise DatabaseException(f"Error checking duplicate for watchlist {watchlist_id} from database.", original_exception=e)
     finally:
         session.close()
 
@@ -304,9 +306,8 @@ def get_watchlist_item_by_id_or_instrument(watchlist_id: int, identifier: int) -
         """), {"watchlist_id": watchlist_id, "identifier": identifier})
         row = res.fetchone()
         return dict(row._mapping) if row else None
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.error(f"Error finding watchlist item: {e}")
-        return None
+        raise DatabaseException("Error finding watchlist item from database.", original_exception=e)
     finally:
         session.close()
-

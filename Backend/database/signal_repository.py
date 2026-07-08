@@ -1,6 +1,8 @@
 from sqlalchemy.sql import text
 from database.db import SessionLocal
 from utils.logger import get_logger
+from sqlalchemy.exc import SQLAlchemyError
+from exceptions import DatabaseException
 
 logger = get_logger(__name__)
 
@@ -28,10 +30,10 @@ def init_db() -> None:
         """))
         session.commit()
         logger.info("Database table 'signals' initialized and verified with updated schema columns.")
-    except Exception as e:
+    except SQLAlchemyError as e:
         session.rollback()
         logger.exception(f"Failed to initialize/migrate 'signals' database schema: {e}")
-        raise
+        raise DatabaseException("Failed to initialize/migrate signals database schema.", original_exception=e)
     finally:
         session.close()
 
@@ -53,7 +55,7 @@ def save_signal(
     Maps input stoploss (sl) parameter to database column `stoploss`.
 
     Returns:
-        bool: True if insert transaction completed successfully, False otherwise.
+        bool: True if insert transaction completed successfully.
     """
     session = SessionLocal()
     try:
@@ -99,10 +101,10 @@ def save_signal(
         session.commit()
         logger.info(f"Signal persisted successfully: {action} {symbol} @ {entry} Status={status} ValStatus={validation_status}")
         return True
-    except Exception as e:
+    except SQLAlchemyError as e:
         session.rollback()
         logger.error(f"Failed to persist signal {action} {symbol} to PostgreSQL: {e}")
-        return False
+        raise DatabaseException(f"Failed to persist signal {action} {symbol} to database.", original_exception=e)
     finally:
         session.close()
 
@@ -128,8 +130,8 @@ def check_duplicate_signal(symbol: str, action: str, entry: float) -> bool:
             "entry": entry
         }).scalar()
         return count > 0
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.error(f"Error checking duplicate signal: {e}")
-        return False
+        raise DatabaseException("Error checking duplicate signal from database.", original_exception=e)
     finally:
         session.close()

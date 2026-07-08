@@ -97,6 +97,9 @@ app.add_middleware(
 from routers.auth import router as auth_router
 from routers.user_management import router as user_management_router
 from routers.watchlist import router as watchlist_router
+from fastapi import Request
+from fastapi.responses import JSONResponse
+from exceptions import PlatformException
 
 # Register the WebSocket route handler
 app.include_router(ws_router)
@@ -108,6 +111,23 @@ app.include_router(auth_router)
 app.include_router(user_management_router)
 app.include_router(watchlist_router)
 
+
+@app.exception_handler(PlatformException)
+async def platform_exception_handler(request: Request, exc: PlatformException):
+    """
+    Global exception handler for all custom PlatformExceptions.
+    Translates exception metadata into standard HTTP JSONResponse structures.
+    """
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "success": False,
+            "error": {
+                "code": exc.error_code,
+                "message": exc.client_message
+            }
+        }
+    )
 
 
 @app.get("/")

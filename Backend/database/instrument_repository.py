@@ -3,6 +3,8 @@ from sqlalchemy.sql import text
 from database.db import SessionLocal
 from utils.logger import get_logger
 from database.defaults import DEFAULT_SYMBOLS, DEFAULT_STOCKS, DEFAULT_INDICES
+from sqlalchemy.exc import SQLAlchemyError
+from exceptions import DatabaseException
 
 logger = get_logger(__name__)
 
@@ -46,10 +48,10 @@ def init_db() -> None:
         session.commit()
 
         logger.info("Database table 'instruments' initialized, verified, and migrated.")
-    except Exception as e:
+    except SQLAlchemyError as e:
         session.rollback()
         logger.exception(f"Failed to initialize 'instruments' database schema or run migrations: {e}")
-        raise
+        raise DatabaseException("Failed to initialize instruments database schema.", original_exception=e)
     finally:
         session.close()
 
@@ -66,9 +68,9 @@ def get_all_instruments() -> list:
         """))
         rows = result.fetchall()
         return [dict(row._mapping) for row in rows]
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.error(f"Error fetching all instruments: {e}")
-        return []
+        raise DatabaseException("Error fetching all instruments from database.", original_exception=e)
     finally:
         session.close()
 
@@ -126,9 +128,9 @@ def search_instruments(query: str, limit: int = 20) -> list:
         result = session.execute(text(sql), params)
         rows = result.fetchall()
         return [dict(row._mapping) for row in rows]
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.error(f"Error searching instruments with query '{query}': {e}")
-        return []
+        raise DatabaseException("Error searching instruments in database.", original_exception=e)
     finally:
         session.close()
 
@@ -147,9 +149,9 @@ def get_instrument_by_symbol(symbol: str) -> dict:
         if row:
             return dict(row._mapping)
         return None
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.error(f"Error fetching instrument by symbol {symbol}: {e}")
-        return None
+        raise DatabaseException(f"Error fetching instrument by symbol {symbol} from database.", original_exception=e)
     finally:
         session.close()
 
@@ -184,10 +186,10 @@ def create_instrument(symbol: str, token: int, exchange: str, name: str, segment
         session.commit()
         logger.info(f"Instrument '{symbol}' ({exchange}) created or updated successfully with category '{instrument_category}'.")
         return True
-    except Exception as e:
+    except SQLAlchemyError as e:
         session.rollback()
         logger.error(f"Failed to create instrument {symbol} ({exchange}): {e}")
-        return False
+        raise DatabaseException("Failed to create instrument in database.", original_exception=e)
     finally:
         session.close()
 
@@ -208,10 +210,10 @@ def delete_instrument(symbol: str, exchange: str) -> bool:
         else:
             logger.warning(f"Instrument '{symbol}' ({exchange}) not found for deletion.")
             return False
-    except Exception as e:
+    except SQLAlchemyError as e:
         session.rollback()
         logger.error(f"Failed to delete instrument {symbol} ({exchange}): {e}")
-        return False
+        raise DatabaseException("Failed to delete instrument from database.", original_exception=e)
     finally:
         session.close()
 
@@ -234,15 +236,12 @@ def delete_instruments_bulk(targets: list) -> int:
         session.commit()
         logger.info(f"Bulk deleted {deleted_count} instruments successfully.")
         return deleted_count
-    except Exception as e:
+    except SQLAlchemyError as e:
         session.rollback()
         logger.error(f"Failed bulk deletion transaction: {e}")
-        return 0
+        raise DatabaseException("Failed bulk deletion transaction in database.", original_exception=e)
     finally:
         session.close()
-
-
-
 
 
 def upsert_instruments_bulk(instruments_list: list) -> dict:
@@ -368,10 +367,10 @@ def upsert_instruments_bulk(instruments_list: list) -> dict:
                 insert_params
             )
         session.commit()
-    except Exception as e:
+    except SQLAlchemyError as e:
         session.rollback()
         logger.error(f"Bulk upsert failed: {e}")
-        raise e
+        raise DatabaseException("Bulk upsert of instruments failed in database.", original_exception=e)
     finally:
         session.close()
     return {"imported": imported, "updated": updated, "skipped": skipped}
@@ -391,12 +390,11 @@ def check_duplicate(symbol: str, exchange: str, token: int) -> dict:
         if row:
             return dict(row._mapping)
         return {"symbol_exists": False, "token_exists": False}
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.error(f"Error checking duplicate instrument: {e}")
-        return {"symbol_exists": False, "token_exists": False}
+        raise DatabaseException("Error checking duplicate instrument in database.", original_exception=e)
     finally:
         session.close()
-
 
 
 def get_dashboard_watchlist(watchlist_id: int = None) -> dict:
@@ -493,14 +491,9 @@ def get_dashboard_watchlist(watchlist_id: int = None) -> dict:
             "selected_watchlist_id": resolved_watchlist_id
         }
 
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.error(f"Error fetching dashboard watchlist: {e}")
-        return {
-            "indices": [],
-            "stocks": [],
-            "view_mode": "empty",
-            "selected_watchlist_id": None
-        }
+        raise DatabaseException("Error fetching dashboard watchlist from database.", original_exception=e)
 
     finally:
         session.close()
@@ -518,10 +511,10 @@ def delete_all_instruments() -> int:
         count = result.rowcount
         logger.info(f"All instruments deleted. Rows affected: {count}")
         return count
-    except Exception as e:
+    except SQLAlchemyError as e:
         session.rollback()
         logger.error(f"Failed to delete all instruments: {e}")
-        raise e
+        raise DatabaseException("Failed to delete all instruments from database.", original_exception=e)
     finally:
         session.close()
 
@@ -541,9 +534,9 @@ def get_instrument_by_symbol_exchange(symbol: str, exchange: str) -> dict:
         if row:
             return dict(row._mapping)
         return None
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.error(f"Error fetching instrument {symbol} on {exchange}: {e}")
-        return None
+        raise DatabaseException(f"Error fetching instrument {symbol} on {exchange} from database.", original_exception=e)
     finally:
         session.close()
 
@@ -563,9 +556,9 @@ def get_instrument_by_id(instrument_id: int) -> dict:
         if row:
             return dict(row._mapping)
         return None
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.error(f"Error fetching instrument by id {instrument_id}: {e}")
-        return None
+        raise DatabaseException(f"Error fetching instrument by id {instrument_id} from database.", original_exception=e)
     finally:
         session.close()
 
@@ -594,9 +587,9 @@ def find_instrument(symbol: str, broker: Optional[str] = None) -> Optional[dict]
         if row:
             return dict(row._mapping)
         return None
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.error(f"Error in find_instrument for symbol={symbol}, broker={broker}: {e}")
-        return None
+        raise DatabaseException(f"Error finding instrument for symbol {symbol} from database.", original_exception=e)
     finally:
         session.close()
 
@@ -610,9 +603,8 @@ def is_instrument_catalog_empty() -> bool:
         res = session.execute(text("SELECT COUNT(*) FROM instruments;"))
         count = res.scalar() or 0
         return count == 0
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.error(f"Error checking if instrument catalog is empty: {e}")
-        return True
+        raise DatabaseException("Error checking if instrument catalog is empty in database.", original_exception=e)
     finally:
         session.close()
-
