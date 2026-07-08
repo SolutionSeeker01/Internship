@@ -1,6 +1,8 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose.exceptions import JWTError
+from sqlalchemy.exc import SQLAlchemyError
+from exceptions import DatabaseException
 
 from database.db import SessionLocal
 from models.user import User
@@ -35,13 +37,16 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
         user_id_str: str = payload.get("sub")
         if user_id_str is None:
             raise credentials_exception
-    except JWTError:
+        
+        # Validate and convert user_id_str to integer before entering database block
+        user_id = int(user_id_str)
+    except (JWTError, ValueError):
         raise credentials_exception
 
     session = SessionLocal()
     try:
         # Query matching user record from database
-        user = session.query(User).filter(User.id == int(user_id_str)).first()
+        user = session.query(User).filter(User.id == user_id).first()
         if user is None:
             raise credentials_exception
             
@@ -57,7 +62,10 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
         user.active_broker = account.broker if account else "ZERODHA"
             
         return user
-    except ValueError:
-        raise credentials_exception
+    except SQLAlchemyError as db_err:
+        raise DatabaseException(
+            diagnostic_message="Failed to resolve authenticated user from database.",
+            original_exception=db_err
+        )
     finally:
         session.close()
