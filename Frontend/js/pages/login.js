@@ -1,5 +1,12 @@
 // Initialize event listeners on page load
 document.addEventListener('DOMContentLoaded', () => {
+    // If an access token already exists, auto-redirect to bootstrap.html to check session validity
+    const accessToken = localStorage.getItem('access_token');
+    if (accessToken) {
+        window.location.replace('bootstrap.html');
+        return;
+    }
+
     const loginForm = document.getElementById('login-form');
     if (loginForm) {
         loginForm.addEventListener('submit', handleLogin);
