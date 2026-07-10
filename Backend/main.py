@@ -60,7 +60,57 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to load subscription universe at startup: {e}")
         raise
 
+    # --- Startup Runtime Reconstruction for connected MASTERs ---
+    try:
+        from database.db import SessionLocal
+        from models.broker_account import BrokerAccount
+        from models.user import User, UserRole
+        from security.encryption import decrypt_value
+        from services.brokers.factory import BrokerFactory
+        from market_data.kite_client import start_market_data_service
+        import asyncio
 
+        db = SessionLocal()
+        try:
+            connected_accounts = db.query(BrokerAccount).join(
+                User, User.id == BrokerAccount.user_id
+            ).filter(
+                User.role == UserRole.MASTER,
+                BrokerAccount.is_connected == True
+            ).all()
+            
+            logger.info(f"Startup scan: Found {len(connected_accounts)} connected MASTER accounts to reconstruct.")
+            
+            for account in connected_accounts:
+                try:
+                    if not account.api_key or not account.access_token:
+                        logger.warning(f"Reconstruction skipped for master user ID {account.user_id}: missing key or access token.")
+                        continue
+                        
+                    api_key = decrypt_value(account.api_key)
+                    access_token = decrypt_value(account.access_token)
+                    
+                    broker = BrokerFactory.get_broker(
+                        account.broker,
+                        api_key=api_key,
+                        access_token=access_token
+                    )
+                    
+                    if broker.is_token_expired(account.updated_at):
+                        logger.warning(f"Reconstruction skipped for master user ID {account.user_id}: broker token has expired.")
+                        continue
+                    
+                    # Start feed asynchronously using the running loop
+                    loop = asyncio.get_running_loop()
+                    start_market_data_service(loop, api_key, access_token)
+                    logger.info(f"Reconstruction success: Market feed restarted for master user ID {account.user_id}")
+                    
+                except Exception as rec_err:
+                    logger.error(f"Failed to reconstruct session for master user ID {account.user_id}: {rec_err}", exc_info=True)
+        finally:
+            db.close()
+    except Exception as scan_err:
+        logger.error(f"Critical error scanning connected MASTERs on startup: {scan_err}")
 
     # Market data service is now dynamically started upon successful broker callback verification.
     yield  # Hand over control to run the FastAPI server
