@@ -325,3 +325,18 @@ class ZerodhaBroker(BaseBroker):
             return now_ist.time() >= cutoff_time
         else:
             return True  # Older than 1 day, expired.
+
+    def verify_connection(self) -> bool:
+        """
+        Verifies that the access token is valid and active by calling kite.profile().
+        """
+        if not self.api_key or not self.access_token:
+            raise ValidationException("API credentials (api_key/access_token) are required for verification.")
+        try:
+            kite = KiteConnect(api_key=self.api_key)
+            kite.set_access_token(self.access_token)
+            kite.profile()
+            return True
+        except (KiteException, requests.exceptions.RequestException) as e:
+            logger.error(f"Zerodha broker connection verification failed: {e}")
+            raise BrokerAdapterException("Broker connection verification failed. Stored session is invalid or broker is unreachable.", original_exception=e)

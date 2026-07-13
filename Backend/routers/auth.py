@@ -379,6 +379,21 @@ async def broker_callback(
                 detail="Failed to authenticate broker"
             )
 
+        # STEP 7: Verify connection credentials via authenticated lightweight query
+        try:
+            verifier_broker = BrokerFactory.get_broker(
+                current_user.active_broker,
+                api_key=api_key,
+                access_token=access_token
+            )
+            verifier_broker.verify_connection()
+        except Exception as ver_err:
+            logger.error(f"Failed to verify broker session validity: {ver_err}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Broker connection verification failed. Stored session is invalid or broker is unreachable."
+            )
+
         # Duplicate Broker Account Connection validation
         if broker_user_id:
             existing = session.query(BrokerAccount).filter(

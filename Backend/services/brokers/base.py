@@ -54,6 +54,16 @@ class BaseBroker(ABC):
         pass
 
     @abstractmethod
+    def verify_connection(self) -> bool:
+        """
+        Verifies that the broker connection is valid and usable by executing a lightweight authenticated call.
+        
+        :return: True if the verification succeeded.
+        :raises BrokerAdapterException: If the session is invalid or broker is unreachable.
+        """
+        pass
+
+    @abstractmethod
     def get_historical_candles(
         self,
         instrument_token: int,
