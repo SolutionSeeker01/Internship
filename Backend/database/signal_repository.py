@@ -28,8 +28,20 @@ def init_db() -> None:
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
         """))
+
+        # --- Idempotent migrations: add columns if they do not already exist ---
+        for migration in [
+            "ALTER TABLE signals ADD COLUMN IF NOT EXISTS validation_status VARCHAR(20)",
+            "ALTER TABLE signals ADD COLUMN IF NOT EXISTS validation_reason TEXT",
+            "ALTER TABLE signals ADD COLUMN IF NOT EXISTS validated_at TIMESTAMP",
+            "ALTER TABLE signals ADD COLUMN IF NOT EXISTS t1 NUMERIC(15,4)",
+            "ALTER TABLE signals ADD COLUMN IF NOT EXISTS t2 NUMERIC(15,4)",
+            "ALTER TABLE signals ADD COLUMN IF NOT EXISTS t3 NUMERIC(15,4)",
+        ]:
+            session.execute(text(migration))
+
         session.commit()
-        logger.info("Database table 'signals' initialized and verified with updated schema columns.")
+        logger.info("Database table 'signals' initialized and verified with updated schema columns (including t1/t2/t3).")
     except SQLAlchemyError as e:
         session.rollback()
         logger.exception(f"Failed to initialize/migrate 'signals' database schema: {e}")
@@ -48,11 +60,15 @@ def save_signal(
     status: str = "PENDING",
     validation_status: str = "VALIDATED",
     validation_reason: str = None,
+    t1: float = None,
+    t2: float = None,
+    t3: float = None,
     **kwargs
 ) -> bool:
     """
     Persists a validated signal payload with its lifecycle states into PostgreSQL signals table.
     Maps input stoploss (sl) parameter to database column `stoploss`.
+    Persists pre-calculated targets t1, t2, t3 as immutable values for the audit trail.
 
     Returns:
         bool: True if insert transaction completed successfully.
@@ -71,7 +87,10 @@ def save_signal(
                     status,
                     validation_status,
                     validation_reason,
-                    validated_at
+                    validated_at,
+                    t1,
+                    t2,
+                    t3
                 )
                 VALUES (
                     :action,
@@ -83,7 +102,10 @@ def save_signal(
                     :status,
                     :validation_status,
                     :validation_reason,
-                    CURRENT_TIMESTAMP
+                    CURRENT_TIMESTAMP,
+                    :t1,
+                    :t2,
+                    :t3
                 );
             """),
             {
@@ -95,11 +117,14 @@ def save_signal(
                 "timestamp": timestamp,
                 "status": status,
                 "validation_status": validation_status,
-                "validation_reason": validation_reason
+                "validation_reason": validation_reason,
+                "t1": t1,
+                "t2": t2,
+                "t3": t3,
             }
         )
         session.commit()
-        logger.info(f"Signal persisted successfully: {action} {symbol} @ {entry} Status={status} ValStatus={validation_status}")
+        logger.info(f"Signal persisted successfully: {action} {symbol} @ {entry} T1={t1} T2={t2} T3={t3} Status={status} ValStatus={validation_status}")
         return True
     except SQLAlchemyError as e:
         session.rollback()
@@ -144,7 +169,7 @@ def get_accepted_signals(limit: int = 50, offset: int = 0) -> list:
     session = SessionLocal()
     try:
         sql = """
-            SELECT id, signal_uuid, action, symbol, entry, stoploss, timeframe, signal_timestamp, status, created_at, validation_status, validation_reason, validated_at
+            SELECT id, signal_uuid, action, symbol, entry, stoploss, timeframe, signal_timestamp, status, created_at, validation_status, validation_reason, validated_at, t1, t2, t3
             FROM signals
             WHERE validation_status IN ('VALIDATED', 'PARTIAL')
             ORDER BY created_at DESC

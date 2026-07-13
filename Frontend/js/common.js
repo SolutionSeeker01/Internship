@@ -49,13 +49,17 @@ document.addEventListener('DOMContentLoaded', () => {
         // Set dynamic active page title in the top navbar header h1
         const headerTitleEl = header.querySelector('h1');
         if (headerTitleEl) {
-            let activeTitle = "Dashboard"; // Default fallback
+                    let activeTitle = "Dashboard"; // Default fallback
             if (pageName === "instrument-manager.html") {
                 activeTitle = "Instrument Manager";
             } else if (pageName === "watchlists.html") {
                 activeTitle = "Watchlists";
             } else if (pageName === "user-management.html") {
                 activeTitle = "User Management";
+            } else if (pageName === "signal-monitor.html") {
+                activeTitle = "Signal Monitor";
+            } else if (pageName === "rejected-signals.html") {
+                activeTitle = "Rejected Signals";
             }
             headerTitleEl.textContent = activeTitle;
         }
@@ -118,13 +122,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const instrumentsIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>`;
         const watchlistsIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>`;
         const usersIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>`;
+        const signalMonitorIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>`;
+        const rejectedSignalsIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>`;
         const logoutIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>`;
 
         // Build navigation buttons
-        addNavItem("nav-btn-dashboard", "Dashboard", dashboardIcon, (pageName === "dashboard.html" || pageName === ""));
-        addNavItem("nav-btn-instruments", "Instrument Manager", instrumentsIcon, (pageName === "instrument-manager.html"));
-        addNavItem("nav-btn-watchlists", "Watchlists", watchlistsIcon, (pageName === "watchlists.html"));
-        addNavItem("nav-btn-users", "User Management", usersIcon, (pageName === "user-management.html"));
+        addNavItem("nav-btn-dashboard",        "Dashboard",         dashboardIcon,        (pageName === "dashboard.html" || pageName === ""));
+        addNavItem("nav-btn-instruments",      "Instrument Manager", instrumentsIcon,     (pageName === "instrument-manager.html"));
+        addNavItem("nav-btn-watchlists",       "Watchlists",         watchlistsIcon,      (pageName === "watchlists.html"));
+        addNavItem("nav-btn-signal-monitor",   "Signal Monitor",     signalMonitorIcon,   (pageName === "signal-monitor.html"));
+        addNavItem("nav-btn-rejected-signals", "Rejected Signals",   rejectedSignalsIcon, (pageName === "rejected-signals.html"));
+        addNavItem("nav-btn-users",            "User Management",    usersIcon,           (pageName === "user-management.html"));
 
         sidebar.appendChild(menuList);
 
@@ -169,11 +177,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Wire click handlers for standard sidebar navigation buttons (scoped to sidebar to avoid picking up duplicate IDs in static HTML headers)
-        const btnDashboard = sidebar.querySelector("#nav-btn-dashboard");
-        const btnInstruments = sidebar.querySelector("#nav-btn-instruments");
-        const btnWatchlists = sidebar.querySelector("#nav-btn-watchlists");
-        const btnUsers = sidebar.querySelector("#nav-btn-users");
-        const btnLogout = sidebar.querySelector("#nav-btn-logout");
+        const btnDashboard      = sidebar.querySelector("#nav-btn-dashboard");
+        const btnInstruments    = sidebar.querySelector("#nav-btn-instruments");
+        const btnWatchlists     = sidebar.querySelector("#nav-btn-watchlists");
+        const btnSignalMonitor  = sidebar.querySelector("#nav-btn-signal-monitor");
+        const btnRejected       = sidebar.querySelector("#nav-btn-rejected-signals");
+        const btnUsers          = sidebar.querySelector("#nav-btn-users");
+        const btnLogout         = sidebar.querySelector("#nav-btn-logout");
 
         if (btnDashboard) {
             btnDashboard.addEventListener("click", () => {
@@ -188,6 +198,16 @@ document.addEventListener('DOMContentLoaded', () => {
         if (btnWatchlists) {
             btnWatchlists.addEventListener("click", () => {
                 window.location.replace("watchlists.html");
+            });
+        }
+        if (btnSignalMonitor) {
+            btnSignalMonitor.addEventListener("click", () => {
+                window.location.replace("signal-monitor.html");
+            });
+        }
+        if (btnRejected) {
+            btnRejected.addEventListener("click", () => {
+                window.location.replace("rejected-signals.html");
             });
         }
         if (btnUsers) {

@@ -1,0 +1,295 @@
+/* =====================================================
+   signal-monitor.css — Signal Monitor operator console
+   Extends common.css design tokens. No overrides.
+   ===================================================== */
+
+/* ── Page Layout ── */
+.signal-monitor-container {
+    padding: var(--space-lg);
+    max-width: 1600px;
+    margin: 0 auto;
+}
+
+/* ── Page Header Row ── */
+.page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-lg);
+    padding-bottom: var(--space-md);
+    border-bottom: 1px solid var(--border-color);
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.page-header h2 {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.3px;
+}
+
+.page-header-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.signal-count-badge {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: var(--bg-table-alt);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 4px 10px;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ── Refresh Button ── */
+.btn-refresh {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 500;
+    padding: 6px 14px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.btn-refresh:hover {
+    border-color: var(--accent-blue);
+    color: var(--accent-blue);
+    background: var(--accent-bg);
+}
+.btn-refresh svg {
+    width: 14px;
+    height: 14px;
+    transition: transform 0.3s ease;
+}
+.btn-refresh.spinning svg {
+    transform: rotate(360deg);
+}
+
+/* ── Table Card ── */
+.signals-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-premium);
+    overflow: hidden;
+}
+
+.table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* ── Signal Table ── */
+.signals-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.signals-table thead th {
+    background: #f8fafc;
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    padding: 11px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+    white-space: nowrap;
+}
+
+.signals-table thead th.text-right {
+    text-align: right;
+}
+
+.signals-table tbody tr {
+    border-bottom: 1px solid var(--border-color);
+    transition: background-color 0.1s ease;
+}
+
+.signals-table tbody tr:last-child {
+    border-bottom: none;
+}
+
+.signals-table tbody tr:hover {
+    background-color: var(--bg-table-hover);
+}
+
+.signals-table tbody td {
+    padding: 11px 14px;
+    color: var(--text-primary);
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+.signals-table tbody td.text-right {
+    text-align: right;
+}
+
+/* Monospace numeric columns */
+.col-numeric {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+    font-size: 13px;
+    color: var(--text-primary);
+}
+
+/* ── Action Badge (BUY / SELL) ── */
+.action-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 42px;
+    padding: 3px 8px;
+    border-radius: var(--radius-sm);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+.action-badge.buy {
+    background-color: #dcfce7;
+    color: #15803d;
+}
+
+.action-badge.sell {
+    background-color: #fee2e2;
+    color: #b91c1c;
+}
+
+/* ── Status Badge ── */
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    border-radius: var(--radius-sm);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+}
+
+.status-badge::before {
+    content: '';
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
+}
+
+.status-badge.pending {
+    background: #fefce8;
+    color: #a16207;
+}
+
+.status-badge.completed {
+    background: #dcfce7;
+    color: #15803d;
+}
+
+.status-badge.cancelled {
+    background: #f4f4f5;
+    color: #71717a;
+}
+
+/* ── Validation Badge ── */
+.val-badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: var(--radius-sm);
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.val-badge.validated {
+    background: #dcfce7;
+    color: #15803d;
+}
+
+.val-badge.partial {
+    background: #fef9c3;
+    color: #a16207;
+}
+
+/* ── Target columns: subtle de-emphasis ── */
+.col-target {
+    font-variant-numeric: tabular-nums;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+/* ── ID column: muted ── */
+.col-id {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+/* ── Timestamp column ── */
+.col-time {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+/* ── Timeframe chip ── */
+.tf-chip {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-table-alt);
+    border: 1px solid var(--border-color);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+/* ── Empty / Loading / Error states ── */
+.state-row td {
+    padding: 48px 24px;
+    text-align: center;
+}
+
+.state-icon {
+    font-size: 28px;
+    margin-bottom: 12px;
+    display: block;
+}
+
+.state-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+}
+
+.state-description {
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.state-row.loading td {
+    color: var(--text-secondary);
+}
+
+/* ── Rejection reason column for rejected signals page ── */
+.col-reason {
+    font-size: 12px;
+    color: var(--text-secondary);
+    max-width: 280px;
+    white-space: normal;
+    line-height: 1.5;
+}

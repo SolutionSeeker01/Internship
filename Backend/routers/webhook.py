@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, status
 from signals.schemas import WebhookSignalRequest
 from signals.validator import validate_signal
 from database.signal_repository import save_signal
+from services.signal_engine import calculate_targets
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -36,8 +37,25 @@ async def webhook_ingest(payload: WebhookSignalRequest) -> dict:
     # 2. Run business rules validator
     try:
         val_status, val_reason = validate_signal(payload)
-        
-        # 3. Save the validated signal to the repository
+
+        # 3. Calculate targets for accepted signals before persistence
+        t1, t2, t3 = None, None, None
+        try:
+            targets = calculate_targets(
+                action=payload.action,
+                entry=payload.entry,
+                stoploss=payload.sl,
+            )
+            t1, t2, t3 = targets.t1, targets.t2, targets.t3
+        except Exception as calc_err:
+            logger.error(f"Target calculation failed for {payload.symbol}: {calc_err}")
+            # Fail fast: do not silently persist a signal without targets
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Signal accepted but target calculation failed."
+            )
+
+        # 4. Save the validated signal with pre-calculated targets
         success = save_signal(
             action=payload.action,
             symbol=payload.symbol,
@@ -47,7 +65,10 @@ async def webhook_ingest(payload: WebhookSignalRequest) -> dict:
             timestamp=payload.ts,
             status="PENDING",
             validation_status=val_status,
-            validation_reason=val_reason
+            validation_reason=val_reason,
+            t1=t1,
+            t2=t2,
+            t3=t3,
         )
     except HTTPException as http_ex:
         # Check if the error is a 401 Unauthorized for secret credentials.

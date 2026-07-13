@@ -431,8 +431,9 @@ async def broker_callback(
                 BrokerAccount.user_id != current_user.id
             ).first()
             if existing:
-                # Delete the entire failed BrokerAccount row for this user
-                session.delete(account)
+                # Clear temporary OAuth state fields but preserve credentials configuration
+                account.oauth_state = None
+                account.oauth_state_created_at = None
                 session.commit()
 
                 raise HTTPException(

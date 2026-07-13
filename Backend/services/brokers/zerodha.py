@@ -310,7 +310,8 @@ class ZerodhaBroker(BaseBroker):
 
         # Convert last_updated_at to aware IST datetime
         if last_updated_at.tzinfo is None:
-            last_updated_ist = pytz.utc.localize(last_updated_at).astimezone(ist)
+            # PostgreSQL naive DateTime is stored in local time (Asia/Kolkata)
+            last_updated_ist = pytz.timezone("Asia/Kolkata").localize(last_updated_at)
         else:
             last_updated_ist = last_updated_at.astimezone(ist)
 
