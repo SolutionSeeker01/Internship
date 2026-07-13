@@ -94,10 +94,16 @@ async function handleLogin(event) {
             window.location.href = 'bootstrap.html';
         } else {
             // Handle HTTP error statuses
-            if (response.status === 401) {
-                showError("Invalid username or password.", "Please verify your credentials and try again.");
-            } else {
-                showError("Login failed", "An unexpected server error occurred.");
+            try {
+                const errData = await response.json();
+                const errorMsg = errData.detail || "An unexpected error occurred.";
+                showError("Login failed", errorMsg);
+            } catch (jsonErr) {
+                if (response.status === 401) {
+                    showError("Invalid username or password.", "Please verify your credentials and try again.");
+                } else {
+                    showError("Login failed", "An unexpected server error occurred.");
+                }
             }
         }
     } catch (error) {

@@ -20,6 +20,7 @@ class ZerodhaBroker(BaseBroker):
         self.api_key = api_key
         self.api_secret = api_secret
         self.access_token = access_token
+        self._intentional_shutdown = False
 
     def get_login_url(self, state: str) -> str:
         """
@@ -167,6 +168,7 @@ class ZerodhaBroker(BaseBroker):
         """
         Terminates the WebSocket client feed connection and resets connection structures.
         """
+        self._intentional_shutdown = True
         if hasattr(self, "_kws") and self._kws is not None:
             try:
                 self._kws.close()
@@ -242,10 +244,16 @@ class ZerodhaBroker(BaseBroker):
                 logger.error(f"Error normalizing Zerodha tick: {e}", exc_info=True)
 
     def _on_ticker_error(self, ws, code, reason):
-        logger.error(f"Zerodha Ticker connection error: {code} - {reason}")
+        if getattr(self, "_intentional_shutdown", False):
+            logger.info(f"Zerodha Ticker connection error ignored during intentional shutdown: {code} - {reason}")
+        else:
+            logger.error(f"Zerodha Ticker connection error: {code} - {reason}")
 
     def _on_ticker_close(self, ws, code, reason):
-        logger.warning(f"Zerodha Ticker connection closed: {code} - {reason}")
+        if getattr(self, "_intentional_shutdown", False):
+            logger.info(f"Zerodha Ticker connection closed gracefully (Intentional): {code} - {reason}")
+        else:
+            logger.warning(f"Zerodha Ticker connection closed: {code} - {reason}")
 
     def get_instruments_metadata(self, exchange: Optional[str] = None) -> List[Dict[str, Any]]:
         """

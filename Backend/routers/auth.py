@@ -7,13 +7,14 @@ from schemas.bootstrap import BootstrapResponse, BootstrapState
 from schemas.broker import BrokerSetupRequest, BrokerSetupResponse
 from schemas.oauth import BrokerConnectResponse
 from schemas.callback import BrokerCallbackRequest, BrokerCallbackResponse
-from services.auth_service import authenticate_user
+from services.auth_service import authenticate_user, enforce_single_active_master
 from security.jwt_handler import create_access_token
 from security.encryption import encrypt_value, decrypt_value
 from dependencies.auth import get_current_user
-from models.user import User
+from models.user import User, UserRole
 from models.broker_account import BrokerAccount
 from database.db import SessionLocal
+from sqlalchemy.exc import IntegrityError
 from market_data.kite_client import start_market_data_service, is_market_service_running, restart_market_data_service
 import asyncio
 from services.brokers.factory import BrokerFactory
@@ -34,6 +35,26 @@ def login(payload: LoginRequest):
             detail="Invalid username or password"
         )
     
+    # If the user is a MASTER, enforce the single active master session rule
+    if user.role == UserRole.MASTER:
+        session = SessionLocal()
+        try:
+            active_session = session.query(BrokerAccount).join(
+                User, User.id == BrokerAccount.user_id
+            ).filter(
+                User.role == UserRole.MASTER,
+                BrokerAccount.is_connected == True,
+                BrokerAccount.user_id != user.id
+            ).first()
+            
+            if active_session:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Another MASTER is currently operating the trading platform. Only one MASTER session is allowed at a time. Please wait until the current session ends."
+                )
+        finally:
+            session.close()
+
     # Resolve user's active broker or default to ZERODHA
     session = SessionLocal()
     try:
@@ -99,6 +120,18 @@ async def bootstrap(current_user: User = Depends(get_current_user)):
                 token_expired = True
 
         if account.access_token and not token_expired:
+            # Sync database connection status to reflect active trading session
+            if not account.is_connected:
+                account.is_connected = True
+                try:
+                    session.commit()
+                except IntegrityError:
+                    session.rollback()
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Another MASTER is currently operating the trading platform. Only one MASTER session is allowed at a time. Please wait until the current session ends."
+                    )
+
             # If the background market service has stopped (e.g. backend restarted), auto-start it
             if not is_market_service_running():
                 try:
@@ -137,6 +170,9 @@ async def connect_broker(current_user: User = Depends(get_current_user)):
     """
     session = SessionLocal()
     try:
+        # Check if another master account is already active/connected
+        enforce_single_active_master(session, current_user.id)
+
         # Retrieve the user's broker account
         account = session.query(BrokerAccount).filter(
             BrokerAccount.user_id == current_user.id
@@ -272,6 +308,9 @@ async def broker_callback(
     """
     session = SessionLocal()
     try:
+        # Check if another master account is already active/connected
+        enforce_single_active_master(session, current_user.id)
+
         # STEP 1: Retrieve authenticated user's BrokerAccount
         account = session.query(BrokerAccount).filter(
             BrokerAccount.user_id == current_user.id,
@@ -401,7 +440,14 @@ async def broker_callback(
             )
 
         # STEP 11: Commit transaction (Only happens if start/restart service succeeded)
-        session.commit()
+        try:
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Another MASTER user established a broker connection at the same time. Only one active trading session is allowed. Please disconnect the existing session and try again."
+            )
 
         return BrokerCallbackResponse(message="Broker connected successfully")
 
