@@ -13,6 +13,7 @@ from security.encryption import encrypt_value, decrypt_value
 from dependencies.auth import get_current_user
 from models.user import User, UserRole
 from models.broker_account import BrokerAccount
+from models.platform_state import PlatformState
 from database.db import SessionLocal
 from sqlalchemy.exc import IntegrityError
 from market_data.kite_client import start_market_data_service, is_market_service_running, restart_market_data_service
@@ -39,19 +40,36 @@ def login(payload: LoginRequest):
     if user.role == UserRole.MASTER:
         session = SessionLocal()
         try:
-            active_session = session.query(BrokerAccount).join(
-                User, User.id == BrokerAccount.user_id
-            ).filter(
-                User.role == UserRole.MASTER,
-                BrokerAccount.is_connected == True,
-                BrokerAccount.user_id != user.id
-            ).first()
+            # Acquire row-level lock on the single platform_state row
+            state = session.query(PlatformState).filter(PlatformState.id == 1).with_for_update().first()
+            if not state:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Configuration Error: PlatformState row is missing in the database."
+                )
             
-            if active_session:
+            if state.active_master_user_id is None:
+                # Case 1: Acquire platform ownership
+                state.active_master_user_id = user.id
+                session.commit()
+            elif state.active_master_user_id == user.id:
+                # Case 2: Preserve ownership for same user
+                pass
+            else:
+                # Case 3: Locked by another MASTER, reject login
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Another MASTER is currently operating the trading platform. Only one MASTER session is allowed at a time. Please wait until the current session ends."
                 )
+        except HTTPException:
+            session.rollback()
+            raise
+        except Exception as e:
+            session.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Database transaction failure during login validation: {e}"
+            )
         finally:
             session.close()
 
@@ -158,6 +176,17 @@ async def bootstrap(current_user: User = Depends(get_current_user)):
             return BootstrapResponse(state=BootstrapState.FULLY_READY)
 
         # Step 5: Otherwise, OAuth login is required
+        if account.is_connected:
+            try:
+                account.is_connected = False
+                session.commit()
+            except Exception as db_err:
+                session.rollback()
+                logger.error(f"Failed to commit database update for expired token: {db_err}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Database persistence failure during connection status synchronization."
+                )
         return BootstrapResponse(state=BootstrapState.BROKER_AUTH_REQUIRED)
         
     finally:
@@ -500,12 +529,23 @@ def logout(current_user: User = Depends(get_current_user)):
         ).first()
         if account:
             account.is_connected = False
-            session.commit()
+
+        # 3. Release platform ownership if current user is a MASTER and owns the lock
+        if current_user.role == UserRole.MASTER:
+            state = session.query(PlatformState).filter(PlatformState.id == 1).with_for_update().first()
+            if state and state.active_master_user_id == current_user.id:
+                state.active_master_user_id = None
+        
+        # 4. Commit all updates together
+        session.commit()
             
         return {"status": "success", "message": "Logged out successfully."}
     except Exception as e:
         session.rollback()
-        raise HTTPException(status_code=500, detail=f"Logout failed: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Logout failed: {str(e)}"
+        )
     finally:
         session.close()
 

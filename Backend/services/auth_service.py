@@ -2,6 +2,7 @@ from typing import Optional
 from database.db import SessionLocal
 from models.user import User, UserRole
 from models.broker_account import BrokerAccount
+from models.platform_state import PlatformState
 from security.password import verify_password
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
@@ -46,19 +47,15 @@ def authenticate_user(username: str, password: str) -> Optional[User]:
 
 def enforce_single_active_master(session: Session, current_user_id: int) -> None:
     """
-    Validates that no other MASTER user has an active connected broker session.
-    Provides a fail-fast validation for user experience before attempting connection changes.
+    Validates that the current user holds the active platform lock.
     """
-    active_session = session.query(BrokerAccount).join(
-        User, User.id == BrokerAccount.user_id
-    ).filter(
-        User.role == UserRole.MASTER,
-        BrokerAccount.is_connected == True,
-        BrokerAccount.user_id != current_user_id
-    ).first()
+    user = session.query(User).filter(User.id == current_user_id).first()
+    if not user or user.role != UserRole.MASTER:
+        return
 
-    if active_session:
+    state = session.query(PlatformState).filter(PlatformState.id == 1).first()
+    if not state or state.active_master_user_id != current_user_id:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Another MASTER account is already active. Only one active trading session is allowed at any time."
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: You do not currently own the active platform session."
         )

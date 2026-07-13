@@ -135,3 +135,47 @@ def check_duplicate_signal(symbol: str, action: str, entry: float) -> bool:
         raise DatabaseException("Error checking duplicate signal from database.", original_exception=e)
     finally:
         session.close()
+
+
+def get_accepted_signals(limit: int = 50, offset: int = 0) -> list:
+    """
+    Retrieves a paginated list of accepted signals (validation_status = 'VALIDATED' or 'PARTIAL').
+    """
+    session = SessionLocal()
+    try:
+        sql = """
+            SELECT id, signal_uuid, action, symbol, entry, stoploss, timeframe, signal_timestamp, status, created_at, validation_status, validation_reason, validated_at
+            FROM signals
+            WHERE validation_status IN ('VALIDATED', 'PARTIAL')
+            ORDER BY created_at DESC
+            LIMIT :limit OFFSET :offset;
+        """
+        result = session.execute(text(sql), {"limit": limit, "offset": offset})
+        return [dict(row._mapping) for row in result.all()]
+    except SQLAlchemyError as e:
+        logger.error(f"Error fetching accepted signals: {e}")
+        raise DatabaseException("Error fetching accepted signals from database.", original_exception=e)
+    finally:
+        session.close()
+
+
+def get_rejected_signals(limit: int = 50, offset: int = 0) -> list:
+    """
+    Retrieves a paginated list of rejected signals (validation_status = 'REJECTED').
+    """
+    session = SessionLocal()
+    try:
+        sql = """
+            SELECT id, signal_uuid, action, symbol, entry, stoploss, timeframe, signal_timestamp, status, created_at, validation_status, validation_reason, validated_at
+            FROM signals
+            WHERE validation_status = 'REJECTED'
+            ORDER BY created_at DESC
+            LIMIT :limit OFFSET :offset;
+        """
+        result = session.execute(text(sql), {"limit": limit, "offset": offset})
+        return [dict(row._mapping) for row in result.all()]
+    except SQLAlchemyError as e:
+        logger.error(f"Error fetching rejected signals: {e}")
+        raise DatabaseException("Error fetching rejected signals from database.", original_exception=e)
+    finally:
+        session.close()

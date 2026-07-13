@@ -19,6 +19,7 @@ import models  # Register ORM models for metadata relationships
 from routers.websocket import router as ws_router
 from routers.candles import router as candle_router
 from routers.webhook import router as webhook_router
+from routers.signals import router as signals_router
 from routers.instruments import router as instruments_router
 from routers.dashboard import router as dashboard_router
 from market_data.kite_client import start_market_data_service
@@ -97,7 +98,13 @@ async def lifespan(app: FastAPI):
                     )
                     
                     if broker.is_token_expired(account.updated_at):
-                        logger.warning(f"Reconstruction skipped for master user ID {account.user_id}: broker token has expired.")
+                        logger.warning(f"Reconstruction skipped for master user ID {account.user_id}: broker token has expired. Syncing database connection state to False.")
+                        try:
+                            account.is_connected = False
+                            db.commit()
+                        except Exception as db_err:
+                            db.rollback()
+                            logger.error(f"Failed to commit database update for expired token: {db_err}")
                         continue
                     
                     # Start feed asynchronously using the running loop
@@ -155,6 +162,7 @@ from exceptions import PlatformException
 app.include_router(ws_router)
 app.include_router(candle_router)
 app.include_router(webhook_router)
+app.include_router(signals_router)
 app.include_router(instruments_router)
 app.include_router(dashboard_router)
 app.include_router(auth_router)

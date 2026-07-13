@@ -34,20 +34,45 @@ async def webhook_ingest(payload: WebhookSignalRequest) -> dict:
         )
 
     # 2. Run business rules validator
-    val_status, val_reason = validate_signal(payload)
-
-    # 3. Save the validated signal to the repository
-    success = save_signal(
-        action=payload.action,
-        symbol=payload.symbol,
-        entry=payload.entry,
-        sl=payload.sl,
-        timeframe=payload.tf,
-        timestamp=payload.ts,
-        status="PENDING",
-        validation_status=val_status,
-        validation_reason=val_reason
-    )
+    try:
+        val_status, val_reason = validate_signal(payload)
+        
+        # 3. Save the validated signal to the repository
+        success = save_signal(
+            action=payload.action,
+            symbol=payload.symbol,
+            entry=payload.entry,
+            sl=payload.sl,
+            timeframe=payload.tf,
+            timestamp=payload.ts,
+            status="PENDING",
+            validation_status=val_status,
+            validation_reason=val_reason
+        )
+    except HTTPException as http_ex:
+        # Check if the error is a 401 Unauthorized for secret credentials.
+        # Unauthorized secret checks shouldn't write to the database.
+        if http_ex.status_code == status.HTTP_401_UNAUTHORIZED:
+            raise
+            
+        # Persist the rejected signal to database
+        try:
+            save_signal(
+                action=payload.action,
+                symbol=payload.symbol,
+                entry=payload.entry,
+                sl=payload.sl,
+                timeframe=payload.tf,
+                timestamp=payload.ts,
+                status="CANCELLED",
+                validation_status="REJECTED",
+                validation_reason=http_ex.detail
+            )
+        except Exception as db_err:
+            logger.error(f"Failed to persist rejected signal to database: {db_err}")
+            
+        # Re-raise the original HTTPException to keep webhook client response identical
+        raise http_ex
 
     if not success:
         logger.error(f"Failed to persist validated signal to database: {payload.symbol}")
