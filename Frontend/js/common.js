@@ -246,6 +246,39 @@ document.addEventListener('DOMContentLoaded', () => {
         // Fetch fresh user profile details dynamically
         const accessToken = localStorage.getItem("access_token");
         if (accessToken) {
+            // Run bootstrap check on operational pages to prevent bypass of broker setup or authentication requirements
+            const onboardingPages = [
+                "login.html",
+                "bootstrap.html",
+                "broker-auth.html",
+                "broker-connect.html",
+                "broker-setup.html",
+                "broker-callback.html"
+            ];
+            const isOperationalPage = !onboardingPages.includes(pageName);
+
+            if (isOperationalPage) {
+                fetch(`${window.API_BASE_URL}/auth/bootstrap`, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                })
+                .then(res => {
+                    if (res.status === 401) {
+                        handleLogout();
+                        return null;
+                    }
+                    return res.json();
+                })
+                .then(data => {
+                    if (!data) return;
+                    if (data.state === 'BROKER_SETUP_REQUIRED') {
+                        window.location.replace('broker-setup.html');
+                    } else if (data.state === 'BROKER_AUTH_REQUIRED') {
+                        window.location.replace('broker-auth.html');
+                    }
+                })
+                .catch(e => console.error("Failed to run bootstrap status check:", e));
+            }
+
             fetch(`${window.API_BASE_URL}/auth/me`, {
                 headers: { 'Authorization': `Bearer ${accessToken}` }
             })

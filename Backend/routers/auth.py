@@ -132,7 +132,8 @@ async def bootstrap(current_user: User = Depends(get_current_user)):
                     api_key=api_key_check,
                     access_token=access_token_check
                 )
-                token_expired = broker.is_token_expired(account.updated_at)
+                token_time = datetime.combine(account.last_login_trading_day, datetime.min.time()) if account.last_login_trading_day else None
+                token_expired = broker.is_token_expired(token_time)
             except Exception as e:
                 logger.warning(f"Error checking token expiration for broker {account.broker}: {e}")
                 token_expired = True
@@ -227,6 +228,7 @@ async def connect_broker(current_user: User = Depends(get_current_user)):
         oauth_state = secrets.token_urlsafe(32)
         account.oauth_state = oauth_state
         account.oauth_state_created_at = datetime.now(timezone.utc)
+        account.is_connected = False
         
         # Step 6: Construct the login redirect URL via BrokerFactory
         try:

@@ -97,7 +97,9 @@ async def lifespan(app: FastAPI):
                         access_token=access_token
                     )
                     
-                    if broker.is_token_expired(account.updated_at):
+                    from datetime import datetime
+                    token_time = datetime.combine(account.last_login_trading_day, datetime.min.time()) if account.last_login_trading_day else None
+                    if broker.is_token_expired(token_time):
                         logger.warning(f"Reconstruction skipped for master user ID {account.user_id}: broker token has expired. Syncing database connection state to False.")
                         try:
                             account.is_connected = False
