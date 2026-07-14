@@ -143,8 +143,7 @@ def add_instrument(payload: InstrumentCreate, current_user: User = Depends(get_c
     session = SessionLocal()
     try:
         account = session.query(BrokerAccount).filter(
-            BrokerAccount.user_id == current_user.id,
-            BrokerAccount.broker == current_user.active_broker
+            BrokerAccount.user_id == current_user.id
         ).first()
 
         if not account or not account.api_key:
@@ -394,8 +393,7 @@ def sync_instruments(payload: SyncRequest, current_user: User = Depends(get_curr
     session = SessionLocal()
     try:
         account = session.query(BrokerAccount).filter(
-            BrokerAccount.user_id == current_user.id,
-            BrokerAccount.broker == current_user.active_broker
+            BrokerAccount.user_id == current_user.id
         ).first()
 
         if not account or not account.api_key:

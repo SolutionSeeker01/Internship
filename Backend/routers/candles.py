@@ -122,8 +122,7 @@ def get_historical_candles(
     session = SessionLocal()
     try:
         account = session.query(BrokerAccount).filter(
-            BrokerAccount.user_id == current_user.id,
-            BrokerAccount.broker == current_user.active_broker
+            BrokerAccount.user_id == current_user.id
         ).first()
 
         if not account or not account.api_key or not account.access_token:

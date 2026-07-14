@@ -151,8 +151,8 @@ async def bootstrap(current_user: User = Depends(get_current_user)):
                         detail="Another MASTER is currently operating the trading platform. Only one MASTER session is allowed at a time. Please wait until the current session ends."
                     )
 
-            # If the background market service has stopped (e.g. backend restarted), auto-start it
-            if not is_market_service_running():
+            # If the background market service has stopped, auto-start it (exclusive to active MASTER)
+            if current_user.role == UserRole.MASTER and not is_market_service_running():
                 try:
                     api_key = decrypt_value(account.api_key)
                     access_token = decrypt_value(account.access_token)
@@ -200,8 +200,9 @@ async def connect_broker(current_user: User = Depends(get_current_user)):
     """
     session = SessionLocal()
     try:
-        # Check if another master account is already active/connected
-        enforce_single_active_master(session, current_user.id)
+        # Check if another master account is already active/connected (only for MASTER users)
+        if current_user.role == UserRole.MASTER:
+            enforce_single_active_master(session, current_user.id)
 
         # Retrieve the user's broker account
         account = session.query(BrokerAccount).filter(
@@ -339,13 +340,13 @@ async def broker_callback(
     """
     session = SessionLocal()
     try:
-        # Check if another master account is already active/connected
-        enforce_single_active_master(session, current_user.id)
+        # Check if another master account is already active/connected (only for MASTER users)
+        if current_user.role == UserRole.MASTER:
+            enforce_single_active_master(session, current_user.id)
 
         # STEP 1: Retrieve authenticated user's BrokerAccount
         account = session.query(BrokerAccount).filter(
-            BrokerAccount.user_id == current_user.id,
-            BrokerAccount.broker == current_user.active_broker
+            BrokerAccount.user_id == current_user.id
         ).first()
         if not account:
             raise HTTPException(
@@ -464,27 +465,28 @@ async def broker_callback(
         account.oauth_state = None
         account.oauth_state_created_at = None
 
-        # Start or restart the market data service dynamically on the running loop before database commit
-        try:
-            loop = asyncio.get_running_loop()
-            if is_market_service_running():
-                restart_market_data_service(
-                    loop,
-                    api_key,
-                    access_token
+        # Start or restart the market data service dynamically on the running loop before database commit (only for MASTER users)
+        if current_user.role == UserRole.MASTER:
+            try:
+                loop = asyncio.get_running_loop()
+                if is_market_service_running():
+                    restart_market_data_service(
+                        loop,
+                        api_key,
+                        access_token
+                    )
+                else:
+                    start_market_data_service(
+                        loop,
+                        api_key,
+                        access_token
+                    )
+            except Exception as startup_err:
+                # If the market service fails to start, raise an HTTP 500 error which is caught by database rollback blocks
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to start market data service"
                 )
-            else:
-                start_market_data_service(
-                    loop,
-                    api_key,
-                    access_token
-                )
-        except Exception as startup_err:
-            # If the market service fails to start, raise an HTTP 500 error which is caught by database rollback blocks
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to start market data service"
-            )
 
         # STEP 11: Commit transaction (Only happens if start/restart service succeeded)
         try:
@@ -521,14 +523,14 @@ def logout(current_user: User = Depends(get_current_user)):
     """
     session = SessionLocal()
     try:
-        # 1. Terminate the background market feed service
-        from market_data.kite_client import stop_market_data_service
-        stop_market_data_service()
+        # 1. Terminate the background market feed service (exclusive to MASTER user logout)
+        if current_user.role == UserRole.MASTER:
+            from market_data.kite_client import stop_market_data_service
+            stop_market_data_service()
         
-        # 2. Deactivate the broker account connection in the database
+        # 2. Deactivate the broker account connection in the database (applies to both roles)
         account = session.query(BrokerAccount).filter(
-            BrokerAccount.user_id == current_user.id,
-            BrokerAccount.broker == current_user.active_broker
+            BrokerAccount.user_id == current_user.id
         ).first()
         if account:
             account.is_connected = False
