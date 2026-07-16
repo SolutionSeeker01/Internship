@@ -17,7 +17,7 @@
             margin-bottom: var(--space-md);
         }
         .btn-create {
-            background-color: var(--color-primary);
+            background-color: #0284c7;
             color: #ffffff;
             border: none;
             padding: 8px 16px;
@@ -64,6 +64,121 @@
             background-color: #f4f4f5;
             border-color: #d4d4d8;
         }
+
+        /* --- Modal Backdrop & Box styling --- */
+        .modal-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.4);
+            display: none; /* hidden by default */
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            backdrop-filter: blur(4px);
+        }
+        .modal-backdrop.show {
+            display: flex;
+        }
+        .modal-box {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            width: 90%;
+            max-width: 480px;
+            box-shadow: var(--shadow-premium);
+            overflow: hidden;
+            animation: modalFadeIn 0.3s ease-out;
+        }
+        .modal-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .modal-header h3 {
+            margin: 0;
+            font-size: 16px;
+            font-weight: 700;
+        }
+        .modal-body {
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .form-group label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+        .form-input {
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            font-size: 13px;
+            background-color: #ffffff;
+            color: var(--text-primary);
+            outline: none;
+        }
+        .form-input:focus {
+            border-color: var(--color-primary);
+        }
+        .modal-footer {
+            padding: 14px 20px;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            background-color: #fafafa;
+        }
+        .btn-cancel {
+            background-color: #ffffff;
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 8px 16px;
+            border-radius: var(--radius-md);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .btn-cancel:hover {
+            background-color: #f4f4f5;
+        }
+        
+        .btn-submit {
+            background-color: #0284c7;
+            border: none;
+            color: #ffffff;
+            padding: 8px 16px;
+            border-radius: var(--radius-md);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .btn-submit:hover:not(:disabled) {
+            opacity: 0.9;
+        }
+        .btn-submit:disabled {
+            background-color: #f4f4f5;
+            border: 1px solid #d4d4d8;
+            color: #71717a;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+        @keyframes modalFadeIn {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
     </style>
 </head>
 <body>
@@ -76,7 +191,7 @@
             </div>
             <!-- Connection status indicator & Header info -->
             <div class="header-right">
-                <span id="connection-status-dot" class="status-dot disconnected"></span>
+                <span id="connection-status-dot" class="status-dot connected"></span>
                 <span id="connection-status-text" class="status-text">Disconnected</span>
                 <span id="header-clock" class="header-clock">--:--:-- --</span>
                 <button class="theme-toggle" aria-label="Toggle Theme">
@@ -147,6 +262,29 @@
         </section>
     </main>
 
+    <!-- Modal Form Dialog for Create Strategy -->
+    <div class="modal-backdrop" id="create-modal-backdrop">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>Create New Strategy</h3>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="input-strategy-name">Strategy Name *</label>
+                    <input type="text" class="form-input" id="input-strategy-name" placeholder="e.g. Pivot Breakout" required>
+                </div>
+                <div class="form-group">
+                    <label for="input-strategy-desc">Description</label>
+                    <input type="text" class="form-input" id="input-strategy-desc" placeholder="Details about this strategy parameters">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-cancel" id="btn-close-modal">Cancel</button>
+                <button class="btn-submit" id="btn-save-strategy" disabled>Create</button>
+            </div>
+        </div>
+    </div>
+
     <footer class="app-footer">
         <div class="footer-container">
             <div class="market-breadth">
@@ -161,5 +299,85 @@
     <!-- Load application scripts -->
     <script src="../js/api/config.js"></script>
     <script src="../js/common.js"></script>
+
+    <!-- Frontend Interactive controller script -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const btnCreate = document.getElementById('btn-create-strategy');
+            const backdrop = document.getElementById('create-modal-backdrop');
+            const btnClose = document.getElementById('btn-close-modal');
+            const btnSave = document.getElementById('btn-save-strategy');
+            const tableBody = document.getElementById('strategy-table-body');
+            const elLastUpdated = document.getElementById('last-updated-time');
+
+            // Form inputs
+            const inputName = document.getElementById('input-strategy-name');
+            const inputDesc = document.getElementById('input-strategy-desc');
+
+            // Track next simulated Strategy ID locally (mock rows have IDs 1, 2, 3)
+            let nextSimulatedId = 4;
+
+            // Update Time
+            if (elLastUpdated) {
+                const now = new Date();
+                elLastUpdated.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+            }
+
+            // Real-time text validation to toggle "Create" button disabled property
+            inputName.addEventListener('input', () => {
+                btnSave.disabled = inputName.value.trim().length === 0;
+            });
+
+            // Open Modal
+            btnCreate.addEventListener('click', () => {
+                // Clear inputs before opening
+                inputName.value = '';
+                inputDesc.value = '';
+                btnSave.disabled = true;
+                backdrop.classList.add('show');
+                inputName.focus();
+            });
+
+            // Close Modal
+            const closeModal = () => {
+                backdrop.classList.remove('show');
+            };
+            btnClose.addEventListener('click', closeModal);
+
+            // Close modal on clicking backdrop directly
+            backdrop.addEventListener('click', (e) => {
+                if (e.target === backdrop) {
+                    closeModal();
+                }
+            });
+
+            // Save Strategy (Frontend validation & Append row)
+            btnSave.addEventListener('click', () => {
+                const nameVal = inputName.value.trim();
+                const descVal = inputDesc.value.trim() || 'No description provided.';
+
+                // Validation rule
+                if (!nameVal) {
+                    return;
+                }
+
+                // Append row to static table dynamically (defaults to Active for new creations)
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td style="font-family: monospace; font-weight: 600;">${nextSimulatedId++}</td>
+                    <td style="font-weight: 600;">${nameVal}</td>
+                    <td style="color: var(--text-secondary);">${descVal}</td>
+                    <td><span class="info-badge badge-active">Active</span></td>
+                    <td class="text-center">
+                        <button class="action-icon-btn">Edit</button>
+                    </td>
+                `;
+                tableBody.appendChild(tr);
+
+                // Close dialog
+                closeModal();
+            });
+        });
+    </script>
 </body>
 </html>
