@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Client Dashboard</title>
+
+    <!-- Link external styling stylesheets -->
+    <link rel="stylesheet" href="../css/pages/common.css">
+    <link rel="stylesheet" href="../css/pages/dashboard.css">
+    <style>
+        /* Custom layout styles unique to Client Dashboard to avoid polluting master css */
+        .client-summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+        }
+        .summary-card {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: 16px 20px;
+            box-shadow: var(--shadow-premium);
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .summary-card-label {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .summary-card-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-primary);
+            font-variant-numeric: tabular-nums;
+        }
+        
+        .client-dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 24px;
+        }
+        @media(min-width: 1024px) {
+            .client-dashboard-grid {
+                grid-template-columns: 3fr 1fr;
+            }
+        }
+        
+        .widget-column {
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+        
+        /* Widget Card Layout Refinements */
+        .widget-card {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-premium);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .widget-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 18px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .widget-row:last-child {
+            border-bottom: none;
+        }
+        .widget-row .label {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+        .widget-row .value {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+        
+        .info-badge {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: var(--radius-sm);
+            text-transform: uppercase;
+        }
+        .badge-success {
+            background-color: #dcfce7;
+            color: #166534;
+        }
+        .badge-danger {
+            background-color: #fee2e2;
+            color: #991b1b;
+        }
+        .badge-warning {
+            background-color: #fef9c3;
+            color: #854d0e;
+        }
+    </style>
+</head>
+<body>
+    <header class="app-header" id="header-section">
+        <div class="header-container">
+            <div class="header-left">
+                <!-- SVG Icon mimicking TradingView/Zerodha style -->
+                <svg class="header-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+                <h1>Client Dashboard</h1>
+            </div>
+            <!-- Connection status indicator & Header info -->
+            <div class="header-right">
+                <span id="connection-status-dot" class="status-dot disconnected"></span>
+                <span id="connection-status-text" class="status-text">Disconnected</span>
+                <span id="header-clock" class="header-clock">--:--:-- --</span>
+                <button class="theme-toggle" aria-label="Toggle Theme">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="dashboard-container" id="dashboard-layout">
+        <!-- 1. Summary Cards Grid -->
+        <section class="client-summary-grid" aria-label="Margin and Performance Summary Grid">
+            <div class="summary-card">
+                <span class="summary-card-label">Available Cash</span>
+                <span class="summary-card-value" id="card-available-cash">₹0.00</span>
+            </div>
+            <div class="summary-card">
+                <span class="summary-card-label">Utilized Margin</span>
+                <span class="summary-card-value" id="card-utilized-margin">₹0.00</span>
+            </div>
+            <div class="summary-card">
+                <span class="summary-card-label">Margin Utilization</span>
+                <span class="summary-card-value" id="card-margin-utilization">0.00%</span>
+            </div>
+            <div class="summary-card">
+                <span class="summary-card-label">Today's P&L</span>
+                <span class="summary-card-value" id="card-today-pnl" style="color: var(--color-positive);">+₹0.00</span>
+            </div>
+            <div class="summary-card">
+                <span class="summary-card-label">Daily Drawdown</span>
+                <span class="summary-card-value" id="card-daily-drawdown">0.00%</span>
+            </div>
+            <div class="summary-card">
+                <span class="summary-card-label">Risk Status</span>
+                <span class="summary-card-value" id="card-risk-status" style="color: var(--color-positive);">SAFE</span>
+            </div>
+        </section>
+
+        <!-- 2. Primary Table Grid & Secondary Widget Column -->
+        <div class="client-dashboard-grid">
+            <!-- Left Side: Tables -->
+            <div class="widget-column">
+                <!-- Active Positions Table -->
+                <section class="stocks-section" aria-label="Open Trading Positions">
+                    <h2>Active Positions</h2>
+                    <div class="table-responsive">
+                        <table class="stocks-table" id="positions-table">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Symbol</th>
+                                    <th scope="col">Strategy</th>
+                                    <th scope="col">Direction</th>
+                                    <th scope="col" class="text-right">Quantity</th>
+                                    <th scope="col" class="text-right">Entry Price</th>
+                                    <th scope="col" class="text-right">LTP</th>
+                                    <th scope="col" class="text-right">Stop Loss</th>
+                                    <th scope="col" class="text-right">Live P&L</th>
+                                </tr>
+                            </thead>
+                            <tbody id="positions-table-body">
+                                <tr>
+                                    <td colspan="8" class="text-center" style="color: var(--text-secondary); padding: 24px;">No active trading positions.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Today's Orders Table -->
+                <section class="stocks-section" aria-label="Historical Order Execution Log">
+                    <h2>Today's Orders</h2>
+                    <div class="table-responsive">
+                        <table class="stocks-table" id="orders-table">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Time</th>
+                                    <th scope="col">Symbol</th>
+                                    <th scope="col">Action</th>
+                                    <th scope="col" class="text-right">Quantity</th>
+                                    <th scope="col" class="text-right">Execution Price</th>
+                                    <th scope="col">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="orders-table-body">
+                                <tr>
+                                    <td colspan="6" class="text-center" style="color: var(--text-secondary); padding: 24px;">No orders found for today.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Right Side: Side widgets -->
+            <div class="widget-column">
+                <!-- Strategy Summary Card -->
+                <section class="stocks-section" aria-label="Subscribed Trading Strategies">
+                    <h2>Strategy Settings</h2>
+                    <div class="widget-card">
+                        <div class="widget-row">
+                            <span class="label">Auto Trading</span>
+                            <span class="info-badge badge-success" id="widget-auto-trading">Enabled</span>
+                        </div>
+                        <div class="widget-row">
+                            <span class="label">Active Strategies</span>
+                            <span class="value" id="widget-active-strategies">0</span>
+                        </div>
+                        <div class="widget-row">
+                            <span class="label">Disabled Strategies</span>
+                            <span class="value" id="widget-disabled-strategies">0</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Risk Card -->
+                <section class="stocks-section" aria-label="Account Risk Profiles">
+                    <h2>Risk Status</h2>
+                    <div class="widget-card">
+                        <div class="widget-row">
+                            <span class="label">Max Drawdown</span>
+                            <span class="value" id="widget-max-drawdown">5.00%</span>
+                        </div>
+                        <div class="widget-row">
+                            <span class="label">Current Drawdown</span>
+                            <span class="value" id="widget-current-drawdown" style="color: var(--color-positive);">0.00%</span>
+                        </div>
+                        <div class="widget-row">
+                            <span class="label">Account Guard</span>
+                            <span class="info-badge badge-success">Active</span>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </main>
+
+    <footer class="app-footer">
+        <div class="footer-container">
+            <div class="market-breadth">
+                <span class="breadth-item">Client Portfolio Mode</span>
+            </div>
+            <div class="footer-right">
+                <span class="last-updated">Last updated: <span id="last-updated-time">--:--:-- --</span></span>
+                <span class="refresh-btn" onclick="location.reload();">↻</span>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Load application scripts -->
+    <script src="../js/api/config.js"></script>
+    <script src="../js/common.js"></script>
+    <script src="../js/pages/client-dashboard.js"></script>
+</body>
+</html>

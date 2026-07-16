@@ -126,13 +126,26 @@ document.addEventListener('DOMContentLoaded', () => {
         const rejectedSignalsIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>`;
         const logoutIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>`;
 
-        // Build navigation buttons
-        addNavItem("nav-btn-dashboard",        "Dashboard",         dashboardIcon,        (pageName === "dashboard.html" || pageName === ""));
-        addNavItem("nav-btn-instruments",      "Instrument Manager", instrumentsIcon,     (pageName === "instrument-manager.html"));
-        addNavItem("nav-btn-watchlists",       "Watchlists",         watchlistsIcon,      (pageName === "watchlists.html"));
-        addNavItem("nav-btn-signal-monitor",   "Signal Monitor",     signalMonitorIcon,   (pageName === "signal-monitor.html"));
-        addNavItem("nav-btn-rejected-signals", "Rejected Signals",   rejectedSignalsIcon, (pageName === "rejected-signals.html"));
-        addNavItem("nav-btn-users",            "User Management",    usersIcon,           (pageName === "user-management.html"));
+        // Build navigation buttons based on user role
+        const userObjStr = localStorage.getItem("user");
+        let userObj = null;
+        try {
+            if (userObjStr) userObj = JSON.parse(userObjStr);
+        } catch (e) {
+            console.error("Failed to parse user session metadata:", e);
+        }
+
+        const isClient = userObj && userObj.role === "CLIENT";
+
+        addNavItem("nav-btn-dashboard", "Dashboard", dashboardIcon, (pageName === "dashboard.html" || pageName === "client-dashboard.html" || pageName === ""));
+        
+        if (!isClient) {
+            addNavItem("nav-btn-instruments",      "Instrument Manager", instrumentsIcon,     (pageName === "instrument-manager.html"));
+            addNavItem("nav-btn-watchlists",       "Watchlists",         watchlistsIcon,      (pageName === "watchlists.html"));
+            addNavItem("nav-btn-signal-monitor",   "Signal Monitor",     signalMonitorIcon,   (pageName === "signal-monitor.html"));
+            addNavItem("nav-btn-rejected-signals", "Rejected Signals",   rejectedSignalsIcon, (pageName === "rejected-signals.html"));
+            addNavItem("nav-btn-users",            "User Management",    usersIcon,           (pageName === "user-management.html"));
+        }
 
         sidebar.appendChild(menuList);
 
@@ -176,7 +189,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-        // Wire click handlers for standard sidebar navigation buttons (scoped to sidebar to avoid picking up duplicate IDs in static HTML headers)
+        // Wire click handlers for standard sidebar navigation buttons
         const btnDashboard      = sidebar.querySelector("#nav-btn-dashboard");
         const btnInstruments    = sidebar.querySelector("#nav-btn-instruments");
         const btnWatchlists     = sidebar.querySelector("#nav-btn-watchlists");
@@ -187,7 +200,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (btnDashboard) {
             btnDashboard.addEventListener("click", () => {
-                window.location.replace("dashboard.html");
+                if (isClient) {
+                    window.location.replace("client-dashboard.html");
+                } else {
+                    window.location.replace("dashboard.html");
+                }
             });
         }
         if (btnInstruments) {
