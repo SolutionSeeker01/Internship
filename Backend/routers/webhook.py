@@ -69,6 +69,7 @@ async def webhook_ingest(payload: WebhookSignalRequest) -> dict:
             t1=t1,
             t2=t2,
             t3=t3,
+            strategy_id=payload.strategy_id,
         )
     except HTTPException as http_ex:
         # Check if the error is a 401 Unauthorized for secret credentials.
@@ -87,7 +88,8 @@ async def webhook_ingest(payload: WebhookSignalRequest) -> dict:
                 timestamp=payload.ts,
                 status="CANCELLED",
                 validation_status="REJECTED",
-                validation_reason=http_ex.detail
+                validation_reason=http_ex.detail,
+                strategy_id=payload.strategy_id,
             )
         except Exception as db_err:
             logger.error(f"Failed to persist rejected signal to database: {db_err}")

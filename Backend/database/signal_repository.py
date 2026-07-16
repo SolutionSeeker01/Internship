@@ -3,6 +3,7 @@ from database.db import SessionLocal
 from utils.logger import get_logger
 from sqlalchemy.exc import SQLAlchemyError
 from exceptions import DatabaseException
+from typing import Optional
 
 logger = get_logger(__name__)
 
@@ -37,6 +38,7 @@ def init_db() -> None:
             "ALTER TABLE signals ADD COLUMN IF NOT EXISTS t1 NUMERIC(15,4)",
             "ALTER TABLE signals ADD COLUMN IF NOT EXISTS t2 NUMERIC(15,4)",
             "ALTER TABLE signals ADD COLUMN IF NOT EXISTS t3 NUMERIC(15,4)",
+            "ALTER TABLE signals ADD COLUMN IF NOT EXISTS strategy_id BIGINT",
         ]:
             session.execute(text(migration))
 
@@ -63,6 +65,7 @@ def save_signal(
     t1: float = None,
     t2: float = None,
     t3: float = None,
+    strategy_id: Optional[int] = None,
     **kwargs
 ) -> bool:
     """
@@ -90,7 +93,8 @@ def save_signal(
                     validated_at,
                     t1,
                     t2,
-                    t3
+                    t3,
+                    strategy_id
                 )
                 VALUES (
                     :action,
@@ -105,7 +109,8 @@ def save_signal(
                     CURRENT_TIMESTAMP,
                     :t1,
                     :t2,
-                    :t3
+                    :t3,
+                    :strategy_id
                 );
             """),
             {
@@ -121,6 +126,7 @@ def save_signal(
                 "t1": t1,
                 "t2": t2,
                 "t3": t3,
+                "strategy_id": strategy_id,
             }
         )
         session.commit()
@@ -169,7 +175,7 @@ def get_accepted_signals(limit: int = 50, offset: int = 0) -> list:
     session = SessionLocal()
     try:
         sql = """
-            SELECT id, signal_uuid, action, symbol, entry, stoploss, timeframe, signal_timestamp, status, created_at, validation_status, validation_reason, validated_at, t1, t2, t3
+            SELECT id, signal_uuid, action, symbol, entry, stoploss, timeframe, signal_timestamp, status, created_at, validation_status, validation_reason, validated_at, t1, t2, t3, strategy_id
             FROM signals
             WHERE validation_status IN ('VALIDATED', 'PARTIAL')
             ORDER BY created_at DESC
@@ -191,7 +197,7 @@ def get_rejected_signals(limit: int = 50, offset: int = 0) -> list:
     session = SessionLocal()
     try:
         sql = """
-            SELECT id, signal_uuid, action, symbol, entry, stoploss, timeframe, signal_timestamp, status, created_at, validation_status, validation_reason, validated_at
+            SELECT id, signal_uuid, action, symbol, entry, stoploss, timeframe, signal_timestamp, status, created_at, validation_status, validation_reason, validated_at, strategy_id
             FROM signals
             WHERE validation_status = 'REJECTED'
             ORDER BY created_at DESC

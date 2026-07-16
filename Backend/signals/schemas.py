@@ -1,3 +1,4 @@
+from typing import Optional
 from pydantic import BaseModel, Field, field_validator
 
 class WebhookSignalRequest(BaseModel):
@@ -12,6 +13,7 @@ class WebhookSignalRequest(BaseModel):
     sl: float = Field(..., gt=0, description="Stop loss price level")
     tf: str = Field(..., min_length=1, description="Timeframe of the signal")
     ts: int = Field(..., gt=0, description="Epoch milliseconds timestamp of signal generation")
+    strategy_id: Optional[int] = Field(None, description="Optional ID of the strategy that generated the signal")
 
     @field_validator('action')
     @classmethod

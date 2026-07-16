@@ -88,7 +88,7 @@ function renderSignals(signals) {
     if (signals.length === 0) {
         tbody.innerHTML = `
             <tr class="state-row">
-                <td colspan="12">
+                <td colspan="13">
                     <span class="state-icon">📭</span>
                     <div class="state-title">No accepted signals yet</div>
                     <div class="state-description">Accepted signals will appear here once the webhook receives a valid trading alert.</div>
@@ -110,6 +110,7 @@ function renderSignals(signals) {
             <td class="text-right col-target">${formatPrice(s.t3)}</td>
             <td>${statusBadge(s.status)}</td>
             <td>${valBadge(s.validation_status)}</td>
+            <td style="font-family: monospace; font-weight: 600; text-align: center;">${s.strategy_id !== null && s.strategy_id !== undefined ? s.strategy_id : '—'}</td>
             <td class="text-right col-id">#${s.id}</td>
         </tr>
     `).join('');
@@ -120,7 +121,7 @@ function renderLoading() {
     if (!tbody) return;
     tbody.innerHTML = `
         <tr class="state-row loading">
-            <td colspan="12">
+            <td colspan="13">
                 <span class="state-icon">⏳</span>
                 <div class="state-title">Loading signals...</div>
             </td>
@@ -134,7 +135,7 @@ function renderError(message) {
     if (countBadge) countBadge.textContent = 'Error';
     tbody.innerHTML = `
         <tr class="state-row">
-            <td colspan="12">
+            <td colspan="13">
                 <span class="state-icon">⚠️</span>
                 <div class="state-title">Failed to load signals</div>
                 <div class="state-description">${message}</div>

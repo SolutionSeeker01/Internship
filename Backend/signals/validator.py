@@ -34,7 +34,26 @@ def validate_signal(signal: WebhookSignalRequest) -> tuple:
     sl = signal.sl
     ts = signal.ts
 
-    # --- Layer 1: Market Service Connectivity Validation ---
+    # --- Layer 1: Strategy Catalog Existence Validation ---
+    if signal.strategy_id is not None:
+        from database.db import SessionLocal
+        from sqlalchemy.sql import text
+        session = SessionLocal()
+        try:
+            exists = session.execute(
+                text("SELECT id FROM strategies WHERE id = :id"),
+                {"id": signal.strategy_id}
+            ).fetchone()
+            if not exists:
+                logger.warning(f"Rejected signal due to validation failure: STRATEGY_NOT_FOUND for strategy_id {signal.strategy_id}")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid strategy ID: Strategy {signal.strategy_id} does not exist in catalog."
+                )
+        finally:
+            session.close()
+
+    # --- Layer 2: Market Service Connectivity Validation ---
     from market_data.kite_client import is_market_service_running
     if not is_market_service_running():
         logger.warning("Rejected signal due to validation failure: MASTER_OFFLINE")
