@@ -64,6 +64,20 @@
             background-color: #f4f4f5;
             border-color: #d4d4d8;
         }
+        .action-icon-btn.btn-disable {
+            color: #dc2626;
+            border-color: #fecaca;
+        }
+        .action-icon-btn.btn-disable:hover {
+            background-color: #fef2f2;
+        }
+        .action-icon-btn.btn-enable {
+            color: #16a34a;
+            border-color: #bbf7d0;
+        }
+        .action-icon-btn.btn-enable:hover {
+            background-color: #f0fdf4;
+        }
 
         /* --- Modal Backdrop & Box styling --- */
         .modal-backdrop {
@@ -154,6 +168,7 @@
             background-color: #f4f4f5;
         }
         
+        /* Submit Button Styling and Disabled States */
         .btn-submit {
             background-color: #0284c7;
             border: none;
@@ -213,46 +228,19 @@
             </div>
 
             <div class="table-responsive">
-                <table class="stocks-table" id="strategy-table">
+                <table class="stocks-table" id="strategy-table" style="table-layout: fixed; width: 100%;">
                     <thead>
                         <tr>
-                            <th scope="col" style="width: 120px;">Strategy ID</th>
-                            <th scope="col" style="width: 250px;">Strategy Name</th>
-                            <th scope="col">Description</th>
-                            <th scope="col" style="width: 120px;">Status</th>
-                            <th scope="col" style="width: 150px;" class="text-center">Actions</th>
+                            <th scope="col" style="width: 15%; text-align: center;">Strategy ID</th>
+                            <th scope="col" style="width: 25%; text-align: left;">Strategy Name</th>
+                            <th scope="col" style="width: 25%; text-align: left;">Description</th>
+                            <th scope="col" style="width: 15%; text-align: center;">Platform Status</th>
+                            <th scope="col" style="width: 20%; text-align: center;">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="strategy-table-body">
-                        <!-- Mock row 1 -->
                         <tr>
-                            <td style="font-family: monospace; font-weight: 600;">1</td>
-                            <td style="font-weight: 600;">Trend Scalper 5m</td>
-                            <td style="color: var(--text-secondary);">High frequency scalp system running on Nifty F&O 5-minute candles.</td>
-                            <td><span class="info-badge badge-active">Active</span></td>
-                            <td class="text-center">
-                                <button class="action-icon-btn">Edit</button>
-                            </td>
-                        </tr>
-                        <!-- Mock row 2 -->
-                        <tr>
-                            <td style="font-family: monospace; font-weight: 600;">2</td>
-                            <td style="font-weight: 600;">Mean Reversion Pro</td>
-                            <td style="color: var(--text-secondary);">Bollinger band breakdown strategy querying stock basket lists.</td>
-                            <td><span class="info-badge badge-active">Active</span></td>
-                            <td class="text-center">
-                                <button class="action-icon-btn">Edit</button>
-                            </td>
-                        </tr>
-                        <!-- Mock row 3 -->
-                        <tr>
-                            <td style="font-family: monospace; font-weight: 600;">3</td>
-                            <td style="font-weight: 600;">Breakout Momentum</td>
-                            <td style="color: var(--text-secondary);">Triggers entry on weekly high volume range breakouts.</td>
-                            <td><span class="info-badge badge-inactive">Inactive</span></td>
-                            <td class="text-center">
-                                <button class="action-icon-btn">Edit</button>
-                            </td>
+                            <td colspan="5" class="text-center" style="color: var(--text-secondary); padding: 24px;">Loading strategies from database...</td>
                         </tr>
                     </tbody>
                 </table>
@@ -260,11 +248,11 @@
         </section>
     </main>
 
-    <!-- Modal Form Dialog for Create Strategy -->
+    <!-- Modal Form Dialog for Create/Edit Strategy -->
     <div class="modal-backdrop" id="create-modal-backdrop">
         <div class="modal-box">
             <div class="modal-header">
-                <h3>Create New Strategy</h3>
+                <h3 id="modal-title-text">Create New Strategy</h3>
             </div>
             <div class="modal-body">
                 <div class="form-group">
@@ -307,28 +295,35 @@
             const btnSave = document.getElementById('btn-save-strategy');
             const tableBody = document.getElementById('strategy-table-body');
             const elLastUpdated = document.getElementById('last-updated-time');
+            const elModalTitle = document.getElementById('modal-title-text');
 
             // Form inputs
             const inputName = document.getElementById('input-strategy-name');
             const inputDesc = document.getElementById('input-strategy-desc');
 
-            // Track next simulated Strategy ID locally (mock rows have IDs 1, 2, 3)
-            let nextSimulatedId = 4;
+            // Local state to track which strategy we are currently editing (null = creating new)
+            let editingStrategyId = null;
+            let loadedStrategiesList = []; // Holds strategy records loaded from backend
 
             // Update Time
-            if (elLastUpdated) {
-                const now = new Date();
-                elLastUpdated.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+            function updateLastUpdated() {
+                if (elLastUpdated) {
+                    const now = new Date();
+                    elLastUpdated.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+                }
             }
 
-            // Real-time text validation to toggle "Create" button disabled property
+            // Real-time text validation to toggle "Save" button disabled property
             inputName.addEventListener('input', () => {
                 btnSave.disabled = inputName.value.trim().length === 0;
             });
 
-            // Open Modal
+            // Open Modal in CREATE mode
             btnCreate.addEventListener('click', () => {
-                // Clear inputs before opening
+                editingStrategyId = null;
+                elModalTitle.textContent = "Create New Strategy";
+                btnSave.textContent = "Create";
+                
                 inputName.value = '';
                 inputDesc.value = '';
                 btnSave.disabled = true;
@@ -349,32 +344,214 @@
                 }
             });
 
-            // Save Strategy (Frontend validation & Append row)
-            btnSave.addEventListener('click', () => {
-                const nameVal = inputName.value.trim();
-                const descVal = inputDesc.value.trim() || 'No description provided.';
-
-                // Validation rule
-                if (!nameVal) {
+            // Fetch strategies from the backend and populate the UI table
+            async function loadStrategies() {
+                const accessToken = localStorage.getItem('access_token');
+                if (!accessToken) {
+                    window.location.replace('login.html');
                     return;
                 }
 
-                // Append row to static table dynamically (defaults to Active for new creations)
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td style="font-family: monospace; font-weight: 600;">${nextSimulatedId++}</td>
-                    <td style="font-weight: 600;">${nameVal}</td>
-                    <td style="color: var(--text-secondary);">${descVal}</td>
-                    <td><span class="info-badge badge-active">Active</span></td>
-                    <td class="text-center">
-                        <button class="action-icon-btn">Edit</button>
-                    </td>
-                `;
-                tableBody.appendChild(tr);
+                try {
+                    const response = await fetch(`${window.API_BASE_URL}/api/v1/master/strategies`, {
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
 
-                // Close dialog
-                closeModal();
+                    if (!response.ok) {
+                        if (response.status === 401 || response.status === 403) {
+                            window.location.replace('login.html');
+                        }
+                        throw new Error(`Server returned error status: ${response.status}`);
+                    }
+
+                    loadedStrategiesList = await response.json();
+                    renderStrategies(loadedStrategiesList);
+                    updateLastUpdated();
+                } catch (error) {
+                    console.error("Failed to load strategy catalog:", error);
+                    tableBody.innerHTML = `
+                        <tr>
+                            <td colspan="5" class="text-center" style="color: var(--color-negative); padding: 24px; font-weight: 600;">
+                                Error loading strategies from database.
+                            </td>
+                        </tr>
+                    `;
+                }
+            }
+
+            // Render catalog items to DOM
+            function renderStrategies(strategies) {
+                tableBody.innerHTML = '';
+
+                if (strategies.length === 0) {
+                    tableBody.innerHTML = `
+                        <tr>
+                            <td colspan="5" class="text-center" style="color: var(--text-secondary); padding: 24px;">No strategies created in catalog yet.</td>
+                        </tr>
+                    `;
+                    return;
+                }
+
+                strategies.forEach(strat => {
+                    const tr = document.createElement('tr');
+                    
+                    // Conditionally set up toggle button labels
+                    const toggleActionLabel = strat.is_active ? "Disable" : "Enable";
+                    const toggleActionClass = strat.is_active ? "btn-disable" : "btn-enable";
+
+                      tr.innerHTML = `
+                        <td style="width: 15%; text-align: center; font-family: monospace; font-weight: 600;">${strat.id}</td>
+                        <td style="width: 25%; text-align: left; font-weight: 600;">${strat.name}</td>
+                        <td style="width: 25%; text-align: left; color: var(--text-secondary); word-break: break-word;">${strat.description || 'No description provided.'}</td>
+                        <td style="width: 15%; text-align: center;">
+                            <span class="info-badge ${strat.is_active ? 'badge-active' : 'badge-inactive'}">
+                                ${strat.is_active ? 'Active' : 'Inactive'}
+                            </span>
+                        </td>
+                        <td style="width: 20%; text-align: center;">
+                            <div style="display: flex; justify-content: center; gap: 8px;">
+                                <button class="action-icon-btn btn-edit-action" data-id="${strat.id}">Edit</button>
+                                <button class="action-icon-btn ${toggleActionClass} btn-toggle-status-action" data-id="${strat.id}" data-name="${strat.name}" data-active="${strat.is_active}">
+                                    ${toggleActionLabel}
+                                </button>
+                            </div>
+                        </td>
+                    `;
+                    tableBody.appendChild(tr);
+                });
+
+                // Wire click events dynamically on generated edit buttons
+                tableBody.querySelectorAll('.btn-edit-action').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const stratId = parseInt(e.currentTarget.getAttribute('data-id'), 10);
+                        openEditModal(stratId);
+                    });
+                });
+
+                // Wire click events dynamically on generated status toggle buttons
+                tableBody.querySelectorAll('.btn-toggle-status-action').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const stratId = parseInt(e.currentTarget.getAttribute('data-id'), 10);
+                        const stratName = e.currentTarget.getAttribute('data-name');
+                        const isCurrentActive = e.currentTarget.getAttribute('data-active') === 'true';
+                        toggleStrategyStatus(stratId, stratName, isCurrentActive);
+                    });
+                });
+            }
+
+            // Open Modal in EDIT mode
+            function openEditModal(stratId) {
+                const strat = loadedStrategiesList.find(s => s.id === stratId);
+                if (!strat) return;
+
+                editingStrategyId = stratId;
+                elModalTitle.textContent = `Edit Strategy (ID: ${stratId})`;
+                btnSave.textContent = "Save Changes";
+
+                inputName.value = strat.name;
+                inputDesc.value = strat.description || '';
+                btnSave.disabled = false; // Initial values are valid
+                backdrop.classList.add('show');
+                inputName.focus();
+            }
+
+            // Toggle Strategy Active Status (PATCH request with Confirmation Dialog)
+            async function toggleStrategyStatus(stratId, stratName, isCurrentlyActive) {
+                // Construct requirement-compliant confirmation phrasing
+                const promptMsg = isCurrentlyActive 
+                    ? `Disable strategy '${stratName}'? This will stop execution of this strategy for all clients until it is enabled again.`
+                    : `Enable strategy '${stratName}'?`;
+
+                if (!window.confirm(promptMsg)) {
+                    return; // user cancelled confirmation
+                }
+
+                const accessToken = localStorage.getItem('access_token');
+                if (!accessToken) return;
+
+                try {
+                    const response = await fetch(`${window.API_BASE_URL}/api/v1/master/strategies/${stratId}/status`, {
+                        method: 'PATCH',
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            is_active: !isCurrentlyActive
+                        })
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`Failed to change strategy status. Status: ${response.status}`);
+                    }
+
+                    // Reload full table using GET catalog query
+                    await loadStrategies();
+                } catch (error) {
+                    console.error("Failed to toggle strategy status:", error);
+                    alert("Failed to modify strategy status. Please check server logs.");
+                }
+            }
+
+            // Save Strategy (Send POST or PUT request to backend API)
+            btnSave.addEventListener('click', async () => {
+                const nameVal = inputName.value.trim();
+                const descVal = inputDesc.value.trim() || '';
+
+                if (!nameVal) return;
+
+                const accessToken = localStorage.getItem('access_token');
+                if (!accessToken) return;
+
+                // Disable submit button temporarily to prevent duplicate clicks
+                btnSave.disabled = true;
+
+                const isEdit = editingStrategyId !== null;
+                const requestUrl = isEdit 
+                    ? `${window.API_BASE_URL}/api/v1/master/strategies/${editingStrategyId}`
+                    : `${window.API_BASE_URL}/api/v1/master/strategies`;
+                const requestMethod = isEdit ? 'PUT' : 'POST';
+
+                try {
+                    const response = await fetch(requestUrl, {
+                        method: requestMethod,
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            name: nameVal,
+                            description: descVal
+                        })
+                    });
+
+                    if (response.status === 400) {
+                        const errData = await response.json();
+                        alert(errData.detail || "Validation failed: Strategy name already exists.");
+                        btnSave.disabled = false;
+                        inputName.focus();
+                        return;
+                    }
+
+                    if (!response.ok) {
+                        throw new Error(`Failed to save strategy. Status: ${response.status}`);
+                    }
+
+                    // Success: close modal and load refreshed backend list
+                    closeModal();
+                    await loadStrategies();
+                } catch (error) {
+                    console.error("Save strategy failure:", error);
+                    alert("Failed to save strategy. Please check server logs.");
+                    btnSave.disabled = false;
+                }
             });
+
+            // Initial load
+            loadStrategies();
         });
     </script>
 </body>
