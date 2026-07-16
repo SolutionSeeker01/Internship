@@ -60,6 +60,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 activeTitle = "Signal Monitor";
             } else if (pageName === "rejected-signals.html") {
                 activeTitle = "Rejected Signals";
+            } else if (pageName === "strategy-management.html") {
+                activeTitle = "Strategy Management";
             }
             headerTitleEl.textContent = activeTitle;
         }
@@ -124,6 +126,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const usersIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>`;
         const signalMonitorIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>`;
         const rejectedSignalsIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>`;
+        const strategyIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg>`;
         const logoutIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>`;
 
         // Build navigation buttons based on user role
@@ -142,6 +145,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!isClient) {
             addNavItem("nav-btn-instruments",      "Instrument Manager", instrumentsIcon,     (pageName === "instrument-manager.html"));
             addNavItem("nav-btn-watchlists",       "Watchlists",         watchlistsIcon,      (pageName === "watchlists.html"));
+            addNavItem("nav-btn-strategies",       "Strategy Manager",   strategyIcon,        (pageName === "strategy-management.html"));
             addNavItem("nav-btn-signal-monitor",   "Signal Monitor",     signalMonitorIcon,   (pageName === "signal-monitor.html"));
             addNavItem("nav-btn-rejected-signals", "Rejected Signals",   rejectedSignalsIcon, (pageName === "rejected-signals.html"));
             addNavItem("nav-btn-users",            "User Management",    usersIcon,           (pageName === "user-management.html"));
@@ -193,6 +197,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const btnDashboard      = sidebar.querySelector("#nav-btn-dashboard");
         const btnInstruments    = sidebar.querySelector("#nav-btn-instruments");
         const btnWatchlists     = sidebar.querySelector("#nav-btn-watchlists");
+        const btnStrategies     = sidebar.querySelector("#nav-btn-strategies");
         const btnSignalMonitor  = sidebar.querySelector("#nav-btn-signal-monitor");
         const btnRejected       = sidebar.querySelector("#nav-btn-rejected-signals");
         const btnUsers          = sidebar.querySelector("#nav-btn-users");
@@ -215,6 +220,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (btnWatchlists) {
             btnWatchlists.addEventListener("click", () => {
                 window.location.replace("watchlists.html");
+            });
+        }
+        if (btnStrategies) {
+            btnStrategies.addEventListener("click", () => {
+                window.location.replace("strategy-management.html");
             });
         }
         if (btnSignalMonitor) {

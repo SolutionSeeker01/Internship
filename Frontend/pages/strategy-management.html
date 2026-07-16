@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Strategy Management</title>
+
+    <!-- Link external styling stylesheets -->
+    <link rel="stylesheet" href="../css/pages/common.css">
+    <link rel="stylesheet" href="../css/pages/dashboard.css">
+    <style>
+        /* Custom UI helpers */
+        .management-actions-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--space-md);
+        }
+        .btn-create {
+            background-color: var(--color-primary);
+            color: #ffffff;
+            border: none;
+            padding: 8px 16px;
+            border-radius: var(--radius-md);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: var(--shadow-premium);
+            transition: opacity 0.2s ease;
+        }
+        .btn-create:hover {
+            opacity: 0.9;
+        }
+        .info-badge {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: var(--radius-sm);
+            text-transform: uppercase;
+        }
+        .badge-active {
+            background-color: #dcfce7;
+            color: #166534;
+        }
+        .badge-inactive {
+            background-color: #fee2e2;
+            color: #991b1b;
+        }
+        .action-icon-btn {
+            background: none;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 4px 8px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .action-icon-btn:hover {
+            background-color: #f4f4f5;
+            border-color: #d4d4d8;
+        }
+    </style>
+</head>
+<body>
+    <header class="app-header" id="header-section">
+        <div class="header-container">
+            <div class="header-left">
+                <!-- SVG Icon mimicking TradingView/Zerodha style -->
+                <svg class="header-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+                <h1>Strategy Management</h1>
+            </div>
+            <!-- Connection status indicator & Header info -->
+            <div class="header-right">
+                <span id="connection-status-dot" class="status-dot disconnected"></span>
+                <span id="connection-status-text" class="status-text">Disconnected</span>
+                <span id="header-clock" class="header-clock">--:--:-- --</span>
+                <button class="theme-toggle" aria-label="Toggle Theme">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="dashboard-container" id="dashboard-layout">
+        <section class="stocks-section" aria-label="Strategy List Control Console">
+            <div class="management-actions-row">
+                <h2>Active Strategy Catalog</h2>
+                <button class="btn-create" id="btn-create-strategy">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                    Create Strategy
+                </button>
+            </div>
+
+            <div class="table-responsive">
+                <table class="stocks-table" id="strategy-table">
+                    <thead>
+                        <tr>
+                            <th scope="col" style="width: 120px;">Strategy ID</th>
+                            <th scope="col" style="width: 250px;">Strategy Name</th>
+                            <th scope="col">Description</th>
+                            <th scope="col" style="width: 120px;">Status</th>
+                            <th scope="col" style="width: 150px;" class="text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="strategy-table-body">
+                        <!-- Mock row 1 -->
+                        <tr>
+                            <td style="font-family: monospace; font-weight: 600;">1</td>
+                            <td style="font-weight: 600;">Trend Scalper 5m</td>
+                            <td style="color: var(--text-secondary);">High frequency scalp system running on Nifty F&O 5-minute candles.</td>
+                            <td><span class="info-badge badge-active">Active</span></td>
+                            <td class="text-center">
+                                <button class="action-icon-btn">Edit</button>
+                            </td>
+                        </tr>
+                        <!-- Mock row 2 -->
+                        <tr>
+                            <td style="font-family: monospace; font-weight: 600;">2</td>
+                            <td style="font-weight: 600;">Mean Reversion Pro</td>
+                            <td style="color: var(--text-secondary);">Bollinger band breakdown strategy querying stock basket lists.</td>
+                            <td><span class="info-badge badge-active">Active</span></td>
+                            <td class="text-center">
+                                <button class="action-icon-btn">Edit</button>
+                            </td>
+                        </tr>
+                        <!-- Mock row 3 -->
+                        <tr>
+                            <td style="font-family: monospace; font-weight: 600;">3</td>
+                            <td style="font-weight: 600;">Breakout Momentum</td>
+                            <td style="color: var(--text-secondary);">Triggers entry on weekly high volume range breakouts.</td>
+                            <td><span class="info-badge badge-inactive">Inactive</span></td>
+                            <td class="text-center">
+                                <button class="action-icon-btn">Edit</button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <footer class="app-footer">
+        <div class="footer-container">
+            <div class="market-breadth">
+                <span class="breadth-item">Strategy Administration Panel</span>
+            </div>
+            <div class="footer-right">
+                <span class="last-updated">Last updated: <span id="last-updated-time">--:--:-- --</span></span>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Load application scripts -->
+    <script src="../js/api/config.js"></script>
+    <script src="../js/common.js"></script>
+</body>
+</html>
