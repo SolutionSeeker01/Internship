@@ -327,17 +327,82 @@ class ZerodhaBroker(BaseBroker):
         else:
             return True  # Older than 1 day, expired.
 
+    def _get_client(self) -> KiteConnect:
+        """
+        Helper to construct and configure an authenticated KiteConnect client.
+        """
+        if not self.api_key or not self.access_token:
+            raise ValidationException("API credentials (api_key/access_token) are required to communicate with the broker.")
+        kite = KiteConnect(api_key=self.api_key)
+        kite.set_access_token(self.access_token)
+        return kite
+
     def verify_connection(self) -> bool:
         """
         Verifies that the access token is valid and active by calling kite.profile().
         """
-        if not self.api_key or not self.access_token:
-            raise ValidationException("API credentials (api_key/access_token) are required for verification.")
         try:
-            kite = KiteConnect(api_key=self.api_key)
-            kite.set_access_token(self.access_token)
+            kite = self._get_client()
             kite.profile()
             return True
         except (KiteException, requests.exceptions.RequestException) as e:
             logger.error(f"Zerodha broker connection verification failed: {e}")
             raise BrokerAdapterException("Broker connection verification failed. Stored session is invalid or broker is unreachable.", original_exception=e)
+
+    def get_profile(self) -> Dict[str, Any]:
+        """
+        Fetches user profile details from Zerodha.
+        """
+        try:
+            kite = self._get_client()
+            profile = kite.profile()
+            return {
+                "user_id": profile.get("user_id"),
+                "user_name": profile.get("user_name")
+            }
+        except Exception as e:
+            logger.error(f"Failed to fetch Zerodha profile: {e}")
+            raise BrokerAdapterException("Failed to retrieve user profile from broker.", original_exception=e)
+
+    def get_margins(self) -> Dict[str, Any]:
+        """
+        Queries available funds and margin metrics from Zerodha.
+        """
+        try:
+            kite = self._get_client()
+            margins = kite.margins()
+            # Fetch equity margins specifically (defaults to 0 if key not found)
+            equity_margins = margins.get("equity", {})
+            return {
+                "available_cash": float(equity_margins.get("available", {}).get("cash", 0.0)),
+                "utilized_margin": float(equity_margins.get("utilised", {}).get("debits", 0.0)),
+                "collateral": float(equity_margins.get("available", {}).get("collateral", 0.0))
+            }
+        except Exception as e:
+            logger.error(f"Failed to fetch Zerodha margins: {e}")
+            raise BrokerAdapterException("Failed to retrieve margin stats from broker.", original_exception=e)
+
+    def get_positions(self) -> List[Dict[str, Any]]:
+        """
+        Queries today's trading positions from Zerodha (net positions).
+        """
+        try:
+            kite = self._get_client()
+            positions_data = kite.positions()
+            # We map "net" positions as they represent today's active exposures
+            net_positions = positions_data.get("net", [])
+            
+            mapped_positions = []
+            for pos in net_positions:
+                mapped_positions.append({
+                    "symbol": pos.get("tradingsymbol"),
+                    "exchange": pos.get("exchange"),
+                    "quantity": int(pos.get("quantity", 0)),
+                    "average_price": float(pos.get("average_price", 0.0)),
+                    "last_price": float(pos.get("last_price", 0.0)),
+                    "pnl": float(pos.get("pnl", 0.0))
+                })
+            return mapped_positions
+        except Exception as e:
+            logger.error(f"Failed to fetch Zerodha positions: {e}")
+            raise BrokerAdapterException("Failed to retrieve trading positions from broker.", original_exception=e)

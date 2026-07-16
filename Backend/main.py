@@ -156,6 +156,7 @@ app.add_middleware(
 from routers.auth import router as auth_router
 from routers.user_management import router as user_management_router
 from routers.watchlist import router as watchlist_router
+from routers.client_dashboard import router as client_dashboard_router
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from exceptions import PlatformException
@@ -170,6 +171,7 @@ app.include_router(dashboard_router)
 app.include_router(auth_router)
 app.include_router(user_management_router)
 app.include_router(watchlist_router)
+app.include_router(client_dashboard_router)
 
 
 @app.exception_handler(PlatformException)

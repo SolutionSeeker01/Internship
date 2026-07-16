@@ -128,3 +128,38 @@ class BaseBroker(ABC):
         - 'last_price': float
         """
         pass
+
+    @abstractmethod
+    def get_profile(self) -> Dict[str, Any]:
+        """
+        Fetches user profile details from the broker.
+        Returns a standardized dictionary containing:
+        - 'user_id': str
+        - 'user_name': str
+        """
+        pass
+
+    @abstractmethod
+    def get_margins(self) -> Dict[str, Any]:
+        """
+        Queries available funds and margin metrics from the broker.
+        Returns a standardized dictionary containing:
+        - 'available_cash': float
+        - 'utilized_margin': float
+        - 'collateral': float
+        """
+        pass
+
+    @abstractmethod
+    def get_positions(self) -> List[Dict[str, Any]]:
+        """
+        Queries today's trading positions from the broker.
+        Returns a list of standardized dictionaries, each containing:
+        - 'symbol': str
+        - 'exchange': str
+        - 'quantity': int
+        - 'average_price': float
+        - 'last_price': float
+        - 'pnl': float
+        """
+        pass
