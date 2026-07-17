@@ -117,3 +117,23 @@ def bulk_upsert_client_strategy_preferences(
         raise DatabaseException("Failed to persist client strategy preferences in database transaction.", original_exception=e)
     finally:
         session.close()
+
+
+def get_client_strategy_summary(client_id: int) -> Dict[str, int]:
+    """
+    Computes active and disabled strategy metrics by applying administration gating precedence.
+    """
+    try:
+        strategies = get_client_strategies_with_preferences(client_id)
+        active_count = sum(1 for s in strategies if s.get("global_active") and s.get("client_active"))
+        disabled_count = len(strategies) - active_count
+        return {
+            "active_strategies": active_count,
+            "disabled_strategies": disabled_count
+        }
+    except Exception as e:
+        logger.error(f"Failed to calculate strategy preference summary metrics for client {client_id}: {e}")
+        return {
+            "active_strategies": 0,
+            "disabled_strategies": 0
+        }

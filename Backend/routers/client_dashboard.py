@@ -89,7 +89,7 @@ def get_dashboard_summary(current_user: User = Depends(get_current_user), db: Se
             logger.warning(f"Failed to fetch live margins for dashboard summary of user {current_user.id}: {e}")
 
     # 3. Compile summary data
-    return {
+    summary_payload = {
         "broker_name": account.broker,
         "connection_status": connection_status,
         "available_cash": available_cash,
@@ -105,6 +105,17 @@ def get_dashboard_summary(current_user: User = Depends(get_current_user), db: Se
         "active_strategies": 0,
         "disabled_strategies": 0
     }
+
+    # 4. Query client strategy preference counts dynamically from repository summary helper
+    try:
+        from database.client_strategy_preference_repository import get_client_strategy_summary
+        summary_stats = get_client_strategy_summary(current_user.id)
+        summary_payload["active_strategies"] = summary_stats.get("active_strategies", 0)
+        summary_payload["disabled_strategies"] = summary_stats.get("disabled_strategies", 0)
+    except Exception as e:
+        logger.error(f"Failed to fetch client strategy preference summary for user {current_user.id}: {e}")
+
+    return summary_payload
 
 
 @router.get("/portfolio/positions")
