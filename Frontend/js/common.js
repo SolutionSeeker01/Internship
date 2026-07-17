@@ -142,7 +142,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         addNavItem("nav-btn-dashboard", "Dashboard", dashboardIcon, (pageName === "dashboard.html" || pageName === "client-dashboard.html" || pageName === ""));
         
-        if (!isClient) {
+        if (isClient) {
+            addNavItem("nav-btn-trade-settings", "Trade Settings", strategyIcon, (pageName === "trade-settings.html"));
+        } else {
             addNavItem("nav-btn-instruments",      "Instrument Manager", instrumentsIcon,     (pageName === "instrument-manager.html"));
             addNavItem("nav-btn-watchlists",       "Watchlists",         watchlistsIcon,      (pageName === "watchlists.html"));
             addNavItem("nav-btn-strategies",       "Strategy Manager",   strategyIcon,        (pageName === "strategy-management.html"));
@@ -201,6 +203,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const btnSignalMonitor  = sidebar.querySelector("#nav-btn-signal-monitor");
         const btnRejected       = sidebar.querySelector("#nav-btn-rejected-signals");
         const btnUsers          = sidebar.querySelector("#nav-btn-users");
+        const btnTradeSettings  = sidebar.querySelector("#nav-btn-trade-settings");
         const btnLogout         = sidebar.querySelector("#nav-btn-logout");
 
         if (btnDashboard) {
@@ -240,6 +243,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (btnUsers) {
             btnUsers.addEventListener("click", () => {
                 window.location.replace("user-management.html");
+            });
+        }
+        if (btnTradeSettings) {
+            btnTradeSettings.addEventListener("click", () => {
+                window.location.replace("trade-settings.html");
             });
         }
         if (btnLogout) {
