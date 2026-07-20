@@ -19,6 +19,9 @@ from sqlalchemy.exc import IntegrityError
 from market_data.kite_client import start_market_data_service, is_market_service_running, restart_market_data_service
 import asyncio
 from services.brokers.factory import BrokerFactory
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
