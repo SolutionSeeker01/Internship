@@ -65,13 +65,30 @@ manager = ConnectionManager()
 
 
 @router.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket) -> None:
+async def websocket_endpoint(websocket: WebSocket, token: str = None) -> None:
     """
     FastAPI WebSocket endpoint.
     
-    Accepts new client connections, pushes the initial snapshot from store,
-    and registers the client to receive live updates afterward.
+    Accepts new client connections, validates JWT credentials, pushes the initial snapshot
+    from store, and registers the client to receive live updates afterward.
     """
+    from dependencies.auth import get_current_user
+    from fastapi import status
+
+    if not token:
+        logger.warning("Rejected WebSocket connection: missing token parameter.")
+        await websocket.accept()
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    try:
+        await get_current_user(token)
+    except Exception as auth_err:
+        logger.warning(f"Rejected WebSocket connection: unauthorized token. Error: {auth_err}")
+        await websocket.accept()
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
     await manager.connect(websocket)
     
     # 1. Send the initial snapshot of all market data immediately

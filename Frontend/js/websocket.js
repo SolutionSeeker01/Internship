@@ -100,7 +100,9 @@ function connectWebSocket() {
     updateConnectionStatus('disconnected');
 
     try {
-        socket = new WebSocket(WS_URL);
+        const token = localStorage.getItem('access_token');
+        const wsUrlWithToken = token ? `${WS_URL}?token=${encodeURIComponent(token)}` : WS_URL;
+        socket = new WebSocket(wsUrlWithToken);
     } catch (err) {
         console.error('[Dashboard] WebSocket constructor threw:', err);
         scheduleReconnect();
