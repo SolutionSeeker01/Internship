@@ -2,8 +2,9 @@ import os
 from fastapi import APIRouter, HTTPException, status
 from signals.schemas import WebhookSignalRequest
 from signals.validator import validate_signal
-from database.signal_repository import save_signal
+from database.signal_repository import save_signal, save_signal_and_return_id
 from services.signal_engine import calculate_targets
+from services.eligibility_engine import run_eligibility_engine
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -17,7 +18,7 @@ async def webhook_ingest(payload: WebhookSignalRequest) -> dict:
     Ingests, validates, and persists incoming third-party trading signals.
 
     Flow:
-    Router -> Validator -> Repository -> Database.
+    Router -> Validator -> Repository -> Database -> Eligibility Engine -> Targets.
 
     Args:
         payload (WebhookSignalRequest): Normalized request body.
@@ -55,8 +56,8 @@ async def webhook_ingest(payload: WebhookSignalRequest) -> dict:
                 detail="Signal accepted but target calculation failed."
             )
 
-        # 4. Save the validated signal with pre-calculated targets
-        success = save_signal(
+        # 4. Save the validated signal with pre-calculated targets and return the primary key ID
+        signal_id = save_signal_and_return_id(
             action=payload.action,
             symbol=payload.symbol,
             entry=payload.entry,
@@ -71,6 +72,20 @@ async def webhook_ingest(payload: WebhookSignalRequest) -> dict:
             t3=t3,
             strategy_id=payload.strategy_id,
         )
+
+        # 5. Run the target eligibility engine for the validated signal (only if a strategy is linked)
+        # The signal is already committed at this point. Eligibility generation is a downstream
+        # infrastructure concern. Failures here must not enter the rejection persistence path,
+        # which would create a second signal row for the same webhook request.
+        if payload.strategy_id is not None:
+            try:
+                run_eligibility_engine(signal_id=signal_id, strategy_id=payload.strategy_id)
+            except Exception as engine_err:
+                logger.error(
+                    f"Eligibility engine failed for Signal ID {signal_id} "
+                    f"(strategy_id={payload.strategy_id}): {engine_err}"
+                )
+
     except HTTPException as http_ex:
         # Check if the error is a 401 Unauthorized for secret credentials.
         # Unauthorized secret checks shouldn't write to the database.
@@ -96,13 +111,6 @@ async def webhook_ingest(payload: WebhookSignalRequest) -> dict:
             
         # Re-raise the original HTTPException to keep webhook client response identical
         raise http_ex
-
-    if not success:
-        logger.error(f"Failed to persist validated signal to database: {payload.symbol}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database persistence failure."
-        )
 
     return {
         "status": "success",

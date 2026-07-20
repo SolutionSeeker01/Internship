@@ -4,6 +4,10 @@ from dependencies.auth import get_current_user
 from models.user import User, UserRole
 from fastapi import HTTPException
 from database.signal_repository import get_accepted_signals, get_rejected_signals
+from sqlalchemy.orm import Session
+from database.db import get_db
+from schemas.signal import SignalDetailsResponse
+from services.signal_details_service import compile_signal_details
 
 router = APIRouter(prefix="/signals", tags=["Signals"])
 
@@ -40,3 +44,21 @@ def get_rejected(
             detail="Forbidden: Only MASTER users can access rejected signals."
         )
     return get_rejected_signals(limit=limit, offset=offset)
+
+
+@router.get("/{signal_id}/details", response_model=SignalDetailsResponse, status_code=status.HTTP_200_OK)
+def get_signal_details_endpoint(
+    signal_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Retrieves the complete read-only details block for a given signal.
+    Accessible only to authenticated MASTER users.
+    """
+    if current_user.role != UserRole.MASTER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: Only MASTER users can access signal details."
+        )
+    return compile_signal_details(db, signal_id)

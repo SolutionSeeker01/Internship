@@ -98,7 +98,7 @@ function renderSignals(signals) {
     }
 
     tbody.innerHTML = signals.map(s => `
-        <tr>
+        <tr class="clickable-row" data-signal-id="${s.id}" style="cursor: pointer;">
             <td class="col-time">${formatTime(s.created_at)}</td>
             <td><strong>${s.symbol}</strong></td>
             <td>${actionBadge(s.action)}</td>
@@ -195,6 +195,184 @@ async function loadSignals(isSilent = false) {
     }
 }
 
+// ── Signal Details Modal & Rendering ──────────────────────────
+
+const modalOverlay = document.getElementById('signal-details-modal');
+const modalContent = document.getElementById('modal-details-content');
+const closeModalBtn = document.getElementById('close-modal-btn');
+
+function showModal() {
+    if (modalOverlay) modalOverlay.style.display = 'flex';
+}
+
+function hideModal() {
+    if (modalOverlay) modalOverlay.style.display = 'none';
+}
+
+if (closeModalBtn) {
+    closeModalBtn.addEventListener('click', hideModal);
+}
+
+// Close modal when clicking outside the card
+if (modalOverlay) {
+    modalOverlay.addEventListener('click', (e) => {
+        if (e.target === modalOverlay) hideModal();
+    });
+}
+
+function renderModalDetails(details) {
+    const s = details.signal;
+    const summary = details.summary;
+    const targets = details.targets;
+
+    const actionClass = s.action === 'BUY' ? 'buy' : 'sell';
+
+    let targetsHTML = '';
+    if (targets.length === 0) {
+        targetsHTML = `
+            <div class="empty-state" style="text-align: center; padding: 24px; color: var(--text-secondary);">
+                <span>📭</span>
+                <p style="margin: 8px 0 0 0; font-size: 13px;">No clients targeted for this signal.</p>
+            </div>
+        `;
+    } else {
+        targetsHTML = `
+            <div class="table-responsive" style="margin-top: 16px;">
+                <table class="signals-table" style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr>
+                            <th scope="col" style="text-align: left;">Username</th>
+                            <th scope="col" style="text-align: left;">Status</th>
+                            <th scope="col" style="text-align: left;">Reason / Details</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${targets.map(t => {
+                            const badgeClass = t.status === 'READY' ? 'badge-success' : 'badge-danger';
+                            const reasonText = t.skip_reason ? t.skip_reason : '—';
+                            return `
+                                <tr>
+                                    <td style="font-weight: 600;">${t.username}</td>
+                                    <td><span class="info-badge ${badgeClass}">${t.status}</span></td>
+                                    <td style="color: var(--text-secondary); font-family: monospace; font-size: 11px;">${reasonText}</td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    modalContent.innerHTML = `
+        <!-- Signal Canonical Info -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-bottom: 20px; padding: 12px; background: var(--bg-body); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+            <div>
+                <div style="font-size: 10px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;">Symbol</div>
+                <div style="font-size: 14px; font-weight: 700; margin-top: 2px;">${s.symbol}</div>
+            </div>
+            <div>
+                <div style="font-size: 10px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;">Action</div>
+                <div style="margin-top: 2px;"><span class="action-badge ${actionClass}">${s.action}</span></div>
+            </div>
+            <div>
+                <div style="font-size: 10px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;">Timeframe</div>
+                <div style="font-size: 14px; font-weight: 600; margin-top: 2px;"><span class="tf-chip">${s.timeframe}</span></div>
+            </div>
+            <div>
+                <div style="font-size: 10px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;">Entry Price</div>
+                <div style="font-size: 14px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums;">₹${formatPrice(s.entry)}</div>
+            </div>
+            <div>
+                <div style="font-size: 10px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;">Stop Loss</div>
+                <div style="font-size: 14px; font-weight: 700; margin-top: 2px; color: var(--color-negative); font-variant-numeric: tabular-nums;">₹${formatPrice(s.stoploss)}</div>
+            </div>
+        </div>
+
+        <!-- Summary Statistics Cards -->
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px;">
+            <div style="background: var(--bg-card); border: 1px solid var(--border-color); padding: 12px; border-radius: var(--radius-md); text-align: center; box-shadow: var(--shadow-premium);">
+                <div style="font-size: 10px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;">Total Targeted</div>
+                <div style="font-size: 20px; font-weight: 700; margin-top: 4px; color: var(--text-primary);">${summary.total}</div>
+            </div>
+            <div style="background: var(--bg-card); border: 1px solid var(--border-color); padding: 12px; border-radius: var(--radius-md); text-align: center; box-shadow: var(--shadow-premium);">
+                <div style="font-size: 10px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; color: var(--color-positive);">Ready</div>
+                <div style="font-size: 20px; font-weight: 700; margin-top: 4px; color: var(--color-positive);">${summary.ready}</div>
+            </div>
+            <div style="background: var(--bg-card); border: 1px solid var(--border-color); padding: 12px; border-radius: var(--radius-md); text-align: center; box-shadow: var(--shadow-premium);">
+                <div style="font-size: 10px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; color: var(--color-negative);">Skipped</div>
+                <div style="font-size: 20px; font-weight: 700; margin-top: 4px; color: var(--color-negative);">${summary.skipped}</div>
+            </div>
+        </div>
+
+        <!-- Execution Targets Header & Unified Table -->
+        <h4 style="margin: 0; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary);">Client Targets Status</h4>
+        ${targetsHTML}
+    `;
+}
+
+async function loadSignalDetails(signalId) {
+    showModal();
+    if (modalContent) {
+        modalContent.innerHTML = `
+            <div style="text-align: center; padding: 48px 0; color: var(--text-secondary);">
+                <div class="refresh-btn spinning" style="font-size: 28px; display: inline-block;">↻</div>
+                <p style="margin: 12px 0 0 0; font-size: 13px;">Fetching signal targets details...</p>
+            </div>
+        `;
+    }
+
+    try {
+        const response = await fetch(`${window.API_BASE_URL}/signals/${signalId}/details`, {
+            cache: 'no-store',
+            headers: getAuthHeaders()
+        });
+
+        if (response.status === 401) {
+            window.location.replace('login.html');
+            return;
+        }
+
+        if (response.status === 403) {
+            if (modalContent) {
+                modalContent.innerHTML = `
+                    <div style="text-align: center; padding: 24px; color: var(--color-negative);">
+                        <span>⚠️</span>
+                        <p style="margin: 8px 0 0 0; font-weight: 600;">Access Denied. Only MASTER accounts can view target details.</p>
+                    </div>
+                `;
+            }
+            return;
+        }
+
+        if (!response.ok) {
+            if (modalContent) {
+                modalContent.innerHTML = `
+                    <div style="text-align: center; padding: 24px; color: var(--color-negative);">
+                        <span>⚠️</span>
+                        <p style="margin: 8px 0 0 0; font-weight: 600;">Failed to load details (${response.status})</p>
+                    </div>
+                `;
+            }
+            return;
+        }
+
+        const details = await response.json();
+        renderModalDetails(details);
+
+    } catch (err) {
+        console.error('[SignalMonitor] Details fetch error:', err);
+        if (modalContent) {
+            modalContent.innerHTML = `
+                <div style="text-align: center; padding: 24px; color: var(--color-negative);">
+                    <span>⚠️</span>
+                    <p style="margin: 8px 0 0 0; font-weight: 600;">Error connecting to server. Please try again.</p>
+                </div>
+            `;
+        }
+    }
+}
+
 // ── Init ──────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -202,6 +380,21 @@ document.addEventListener('DOMContentLoaded', () => {
     if (refreshBtn) {
         refreshBtn.addEventListener('click', () => loadSignals(false));
     }
+
+    // Attach delegated click listener to table row elements in the signals table
+    const tableBody = document.getElementById('signals-table-body');
+    if (tableBody) {
+        tableBody.addEventListener('click', (e) => {
+            const row = e.target.closest('.clickable-row');
+            if (row) {
+                const signalId = row.getAttribute('data-signal-id');
+                if (signalId) {
+                    loadSignalDetails(signalId);
+                }
+            }
+        });
+    }
+
     loadSignals(false);
     
     // Set up silent polling every 5 seconds

@@ -71,6 +71,19 @@
             </div>
         </div>
 
+        <!-- Signal Details Overlay Modal (Read-Only) -->
+        <div id="signal-details-modal" class="modal-overlay" style="display: none;">
+            <div class="modal-card">
+                <div class="modal-header">
+                    <h3>Signal Target Details</h3>
+                    <button class="modal-close-btn" id="close-modal-btn" aria-label="Close modal">&times;</button>
+                </div>
+                <div class="modal-body" id="modal-details-content">
+                    <!-- Dynamic details populated by signal-monitor.js -->
+                </div>
+            </div>
+        </div>
+
     </main>
 
     <script src="../js/api/config.js" defer></script>
