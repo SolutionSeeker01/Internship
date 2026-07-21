@@ -206,10 +206,18 @@ def save_signal_and_return_id(
         session.close()
 
 
-def check_duplicate_signal(symbol: str, action: str, entry: float) -> bool:
+def check_duplicate_signal(
+    symbol: str,
+    action: str,
+    entry: float,
+    sl: float,
+    tf: str,
+    strategy_id: Optional[int] = None
+) -> bool:
     """
-    Checks if a signal with the same symbol, action, and entry price
-    was received within the last 2 minutes.
+    Checks if an active/accepted signal matching the exact strategy_id, symbol, action,
+    entry, stoploss, and timeframe was received within the last 2 minutes.
+    Excludes CANCELLED/REJECTED signals.
     """
     session = SessionLocal()
     try:
@@ -219,12 +227,22 @@ def check_duplicate_signal(symbol: str, action: str, entry: float) -> bool:
             WHERE UPPER(symbol) = :symbol
               AND UPPER(action) = :action
               AND entry = :entry
+              AND stoploss = :sl
+              AND timeframe = :tf
+              AND (
+                  (strategy_id IS NULL AND :strategy_id IS NULL)
+                  OR strategy_id = :strategy_id
+              )
+              AND status != 'CANCELLED'
               AND created_at >= CURRENT_TIMESTAMP - INTERVAL '2 minutes';
         """
         count = session.execute(text(sql), {
             "symbol": symbol.upper().strip(),
             "action": action.upper().strip(),
-            "entry": entry
+            "entry": entry,
+            "sl": sl,
+            "tf": str(tf).strip(),
+            "strategy_id": strategy_id
         }).scalar()
         return count > 0
     except SQLAlchemyError as e:

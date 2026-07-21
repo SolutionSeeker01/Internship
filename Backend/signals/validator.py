@@ -171,7 +171,14 @@ def validate_signal(signal: WebhookSignalRequest) -> tuple:
             validation_reason = "LTP_UNAVAILABLE"
 
     # --- Layer 7: Duplicate Signal Protection ---
-    if check_duplicate_signal(symbol, action, entry):
+    if check_duplicate_signal(
+        symbol=symbol,
+        action=action,
+        entry=entry,
+        sl=sl,
+        tf=signal.tf,
+        strategy_id=signal.strategy_id
+    ):
         logger.warning("Rejected signal due to validation failure: DUPLICATE_SIGNAL")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
