@@ -406,3 +406,105 @@ class ZerodhaBroker(BaseBroker):
         except Exception as e:
             logger.error(f"Failed to fetch Zerodha positions: {e}")
             raise BrokerAdapterException("Failed to retrieve trading positions from broker.", original_exception=e)
+
+    def place_order(self, order_spec: Any, idempotency_key: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Submits an order specification to Zerodha KiteConnect.
+        """
+        try:
+            kite = self._get_client()
+            
+            # Extract order spec attributes
+            symbol = getattr(order_spec, "symbol", "")
+            exchange = getattr(order_spec, "exchange", "NSE")
+            action = getattr(order_spec, "action", "BUY")
+            quantity = getattr(order_spec, "quantity", 1)
+            order_type = getattr(order_spec, "order_type", "MARKET")
+            product = getattr(order_spec, "product", "MIS")
+            price = float(getattr(order_spec, "price", 0.0)) if getattr(order_spec, "price", None) else None
+            trigger_price = float(getattr(order_spec, "trigger_price", 0.0)) if getattr(order_spec, "trigger_price", None) else None
+
+            # Map transaction type
+            trans_type = kite.TRANSACTION_TYPE_BUY if action == "BUY" else kite.TRANSACTION_TYPE_SELL
+            
+            # Map order type
+            ord_type = kite.ORDER_TYPE_MARKET
+            if order_type == "LIMIT":
+                ord_type = kite.ORDER_TYPE_LIMIT
+            elif order_type == "SL":
+                ord_type = kite.ORDER_TYPE_SL
+            elif order_type == "SL_MARKET":
+                ord_type = kite.ORDER_TYPE_SLM
+
+            # Map product
+            prod_type = kite.PRODUCT_MIS if product in ("MIS", "INTRADAY") else kite.PRODUCT_CNC
+
+            order_id = kite.place_order(
+                variety=kite.VARIETY_REGULAR,
+                exchange=exchange,
+                tradingsymbol=symbol,
+                transaction_type=trans_type,
+                quantity=quantity,
+                product=prod_type,
+                order_type=ord_type,
+                price=price,
+                trigger_price=trigger_price,
+                tag=idempotency_key[:20] if idempotency_key else None
+            )
+
+            return {
+                "broker_order_id": str(order_id),
+                "status": "SUBMITTED"
+            }
+        except Exception as e:
+            logger.error(f"Zerodha place_order failed for symbol {getattr(order_spec, 'symbol', '')}: {e}")
+            raise BrokerAdapterException(f"Broker order submission failed: {e}", original_exception=e)
+
+    def get_order_by_id(self, broker_order_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Queries Zerodha for an existing order by its broker_order_id.
+        """
+        try:
+            kite = self._get_client()
+            history = kite.order_history(order_id=broker_order_id)
+            if history:
+                latest = history[-1]
+                return {
+                    "broker_order_id": str(latest.get("order_id")),
+                    "status": str(latest.get("status", "SUBMITTED")),
+                    "symbol": str(latest.get("tradingsymbol", "")),
+                    "exchange": str(latest.get("exchange", "NSE")),
+                    "action": str(latest.get("transaction_type", "BUY")),
+                    "quantity": int(latest.get("quantity", 0)),
+                    "price": float(latest.get("price", 0.0))
+                }
+            return None
+        except Exception as e:
+            logger.warning(f"Zerodha get_order_by_id failed for order {broker_order_id}: {e}")
+            raise BrokerAdapterException(f"Order query failed: {e}", original_exception=e)
+
+    def get_order_by_tag(self, tag: str) -> Optional[Dict[str, Any]]:
+        """
+        Queries Zerodha for an existing order matching the given tag / idempotency_key.
+        """
+        try:
+            kite = self._get_client()
+            orders = kite.orders()
+            search_tag = tag[:20] if tag else ""
+            for ord_item in orders:
+                if ord_item.get("tag") == search_tag:
+                    return {
+                        "broker_order_id": str(ord_item.get("order_id")),
+                        "status": str(ord_item.get("status", "SUBMITTED")),
+                        "symbol": str(ord_item.get("tradingsymbol", "")),
+                        "exchange": str(ord_item.get("exchange", "NSE")),
+                        "action": str(ord_item.get("transaction_type", "BUY")),
+                        "quantity": int(ord_item.get("quantity", 0)),
+                        "price": float(ord_item.get("price", 0.0))
+                    }
+            return None
+        except Exception as e:
+            logger.warning(f"Zerodha get_order_by_tag failed for tag {tag}: {e}")
+            raise BrokerAdapterException(f"Order tag query failed: {e}", original_exception=e)
+
+

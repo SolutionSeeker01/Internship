@@ -154,12 +154,33 @@ class BaseBroker(ABC):
     def get_positions(self) -> List[Dict[str, Any]]:
         """
         Queries today's trading positions from the broker.
-        Returns a list of standardized dictionaries, each containing:
-        - 'symbol': str
-        - 'exchange': str
-        - 'quantity': int
-        - 'average_price': float
-        - 'last_price': float
-        - 'pnl': float
         """
         pass
+
+    @abstractmethod
+    def place_order(self, order_spec: Any, idempotency_key: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Submits an order specification to the broker.
+        Returns dictionary containing:
+        - 'broker_order_id': str
+        - 'status': str (e.g. 'SUBMITTED', 'OPEN', 'COMPLETE')
+        """
+        pass
+
+    @abstractmethod
+    def get_order_by_id(self, broker_order_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Queries broker for an existing order by its broker_order_id.
+        Returns standardized order dict if found, or None if not found.
+        """
+        pass
+
+    @abstractmethod
+    def get_order_by_tag(self, tag: str) -> Optional[Dict[str, Any]]:
+        """
+        Queries broker for an existing order by its tag / idempotency_key.
+        Returns standardized order dict if found, or None if not found.
+        """
+        pass
+
+

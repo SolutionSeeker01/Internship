@@ -3,8 +3,9 @@ from database.db import SessionLocal
 from utils.logger import get_logger
 from sqlalchemy.exc import SQLAlchemyError
 from exceptions import DatabaseException
-from typing import Optional
+from typing import Optional, Dict, Any
 from sqlalchemy.orm import Session
+
 
 logger = get_logger(__name__)
 
@@ -322,3 +323,28 @@ def get_signal_targets_with_usernames(db: Session, signal_id: int) -> list:
     except SQLAlchemyError as e:
         logger.error(f"Error fetching execution targets for signal {signal_id}: {e}")
         raise DatabaseException(f"Error fetching execution targets for signal {signal_id} from database.", original_exception=e)
+
+
+def get_signal_by_id(signal_id: int) -> Optional[Dict[str, Any]]:
+    """
+    Retrieves a single signal record by its primary key ID.
+    Returns dictionary mapping of columns, or None if not found.
+    """
+    session = SessionLocal()
+    try:
+        sql = """
+            SELECT id, signal_uuid, action, symbol, entry, stoploss, timeframe, signal_timestamp, status, created_at, validation_status, validation_reason, validated_at, t1, t2, t3, strategy_id
+            FROM signals
+            WHERE id = :signal_id;
+        """
+        result = session.execute(text(sql), {"signal_id": signal_id})
+        row = result.fetchone()
+        if not row:
+            return None
+        return dict(row._mapping)
+    except SQLAlchemyError as e:
+        logger.error(f"Error fetching signal by ID {signal_id}: {e}")
+        raise DatabaseException(f"Error fetching signal by ID {signal_id} from database.", original_exception=e)
+    finally:
+        session.close()
+

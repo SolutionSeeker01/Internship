@@ -91,6 +91,13 @@ def validate_signal(signal: WebhookSignalRequest) -> tuple:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid stoploss: Stoploss must be strictly below entry price for BUY."
             )
+        sl_dist_pct = ((entry - sl) / entry) * 100.0
+        if sl_dist_pct > 5.0:
+            logger.warning(f"Rejected signal due to validation failure: STOPLOSS_EXCEEDS_MAX_DISTANCE ({sl_dist_pct:.2f}% > 5.0%)")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid stoploss: Stoploss distance ({sl_dist_pct:.2f}%) exceeds maximum allowed threshold of 5.0%."
+            )
     elif action == "SELL":
         if sl <= entry:
             logger.warning("Rejected signal due to validation failure: INVALID_STOPLOSS")
@@ -98,6 +105,14 @@ def validate_signal(signal: WebhookSignalRequest) -> tuple:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid stoploss: Stoploss must be strictly above entry price for SELL."
             )
+        sl_dist_pct = ((sl - entry) / entry) * 100.0
+        if sl_dist_pct > 5.0:
+            logger.warning(f"Rejected signal due to validation failure: STOPLOSS_EXCEEDS_MAX_DISTANCE ({sl_dist_pct:.2f}% > 5.0%)")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid stoploss: Stoploss distance ({sl_dist_pct:.2f}%) exceeds maximum allowed threshold of 5.0%."
+            )
+
 
     # --- Layer 5: Market Price and Symbol Validation (Primary) ---
     validation_status = "VALIDATED"

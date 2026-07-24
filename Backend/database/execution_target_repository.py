@@ -3,7 +3,7 @@
 
 from sqlalchemy.sql import text
 from sqlalchemy.exc import SQLAlchemyError
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from database.db import SessionLocal
 from exceptions import DatabaseException
@@ -91,8 +91,6 @@ def bulk_insert_execution_targets(targets: List[Dict[str, Any]]) -> int:
 
     session = SessionLocal()
     try:
-        # Build raw parameter placeholders dynamically for a single bulk statement
-        # using standard SQL parameter binding to avoid injection vulnerabilities.
         values_clause_parts = []
         bind_params = {}
         
@@ -130,5 +128,90 @@ def bulk_insert_execution_targets(targets: List[Dict[str, Any]]) -> int:
         session.rollback()
         logger.error(f"Failed bulk insertion of execution targets: {e}")
         raise DatabaseException("Failed to persist bulk execution targets into database.", original_exception=e)
+    finally:
+        session.close()
+
+
+def claim_ready_execution_target(target_id: int) -> Optional[Dict[str, Any]]:
+    """
+    Atomically claims a READY execution target for processing by updating its status
+    to EXECUTING and setting claimed_at timestamp.
+    
+    Implements Section 8 (Transaction Boundaries & Atomic Claim) and Section 7 (Layer 2 Idempotency)
+    using conditional UPDATE with immediate commit. Returns target data if successfully claimed,
+    or None if another worker already claimed or processed the target.
+    
+    Args:
+        target_id (int): Primary key of the execution target to claim.
+        
+    Returns:
+        Optional[Dict[str, Any]]: Dictionary containing claimed target fields if successful,
+                                 or None if claim failed (0 rows updated).
+    """
+    session = SessionLocal()
+    try:
+        sql = """
+            UPDATE signal_execution_targets
+            SET status = 'EXECUTING',
+                claimed_at = NOW()
+            WHERE id = :target_id 
+              AND status = 'READY'
+            RETURNING id, signal_id, client_id, status, claimed_at;
+        """
+        result = session.execute(text(sql), {"target_id": target_id})
+        row = result.fetchone()
+        session.commit()
+        
+        if not row:
+            logger.info(f"Atomic claim failed for target ID {target_id}: Target is not in READY status or already claimed.")
+            return None
+            
+        logger.info(f"Successfully claimed target ID {target_id} (status: EXECUTING, signal_id: {row[1]}, client_id: {row[2]}).")
+        return {
+            "id": row[0],
+            "signal_id": row[1],
+            "client_id": row[2],
+            "status": row[3],
+            "claimed_at": row[4]
+        }
+    except SQLAlchemyError as e:
+        session.rollback()
+        logger.error(f"Database error during atomic claim for target ID {target_id}: {e}")
+        raise DatabaseException(f"Failed atomic claim for execution target ID {target_id}.", original_exception=e)
+    finally:
+        session.close()
+
+
+def fetch_ready_target_ids(limit: int = 10) -> List[int]:
+    """
+    Polls the database for READY execution target IDs using FOR UPDATE SKIP LOCKED.
+    
+    Implements Section 5.3 (Execution Dispatcher fallback path & concurrency safety)
+    and Section 8 (Transaction Boundaries). Safe for multi-worker deployments.
+    
+    Args:
+        limit (int): Maximum number of READY target IDs to fetch.
+        
+    Returns:
+        List[int]: List of target IDs in READY status.
+    """
+    session = SessionLocal()
+    try:
+        sql = """
+            SELECT id 
+            FROM signal_execution_targets
+            WHERE status = 'READY'
+            ORDER BY id ASC
+            LIMIT :limit
+            FOR UPDATE SKIP LOCKED;
+        """
+        result = session.execute(text(sql), {"limit": limit})
+        rows = result.fetchall()
+        session.commit()
+        return [row[0] for row in rows]
+    except SQLAlchemyError as e:
+        session.rollback()
+        logger.error(f"Failed to fetch READY target IDs: {e}")
+        raise DatabaseException("Failed to fetch READY execution target IDs from database.", original_exception=e)
     finally:
         session.close()
