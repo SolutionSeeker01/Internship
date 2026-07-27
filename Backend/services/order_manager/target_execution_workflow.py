@@ -24,8 +24,7 @@ from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Temporary business rule.
-# TODO: Confirm final value with business (currently 5%; may change to 6% or become configurable).
+# Business Rule: Once price pierces Target or SL or TSL, Limit orders are placed with 5% threshold buffer.
 LIMIT_PRICE_BUFFER_PCT = Decimal("0.05")
 
 

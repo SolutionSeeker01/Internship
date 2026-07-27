@@ -320,36 +320,8 @@ def upsert_instruments_bulk(instruments_list: list) -> dict:
                 imported += 1
                 existing_set.add((symbol, exchange))
 
-        if delete_params:
-            symbol_to_exchange = {}
-            for param in delete_params:
-                symbol_to_exchange[param["symbol"]] = param["exchange"]
-
-            symbols_to_check = list(symbol_to_exchange.keys())
-            
-            # Batch the conflict check in chunks of 5000 symbols to avoid query parameter limits
-            chunk_size = 5000
-            conflicting_ids = []
-            for i in range(0, len(symbols_to_check), chunk_size):
-                chunk = symbols_to_check[i:i+chunk_size]
-                res = session.execute(
-                    text("SELECT id, symbol, exchange FROM instruments WHERE UPPER(symbol) IN :symbols;"),
-                    {"symbols": tuple(chunk)}
-                )
-                for row in res.fetchall():
-                    row_id = row._mapping["id"]
-                    sym = row._mapping["symbol"].upper()
-                    exch = row._mapping["exchange"].upper()
-                    if symbol_to_exchange.get(sym) != exch:
-                        conflicting_ids.append(row_id)
-            
-            if conflicting_ids:
-                # Delete conflicting records by ID (indexed primary key scan, extremely fast)
-                for i in range(0, len(conflicting_ids), chunk_size):
-                    session.execute(
-                        text("DELETE FROM instruments WHERE id IN :ids;"),
-                        {"ids": tuple(conflicting_ids[i:i+chunk_size])}
-                    )
+        # ON CONFLICT (symbol, exchange) DO UPDATE below handles upserts atomically and safely.
+        # No pre-deletion of different exchange rows for the same symbol is required.
 
         if insert_params:
             session.execute(

@@ -97,6 +97,12 @@ class StartupRecoveryService:
             Dict[str, Any]: Diagnostic recovery summary report containing counts and metrics.
         """
         logger.info("Initiating Startup Recovery Service pipeline...")
+        from dev_tools.drm import global_event_bus, RuntimeEvent
+        global_event_bus.publish(RuntimeEvent(
+            event_type="RECOVERY_STARTED",
+            component="STARTUP_RECOVERY"
+        ))
+
         db = session if session else SessionLocal()
         own_session = session is None
 
@@ -150,6 +156,12 @@ class StartupRecoveryService:
                 "subscribed_symbols": list(trade_results["subscribed_symbols"])
             }
             logger.info(f"Startup Recovery Service pipeline finished cleanly. Summary: {summary}")
+
+            global_event_bus.publish(RuntimeEvent(
+                event_type="RECOVERY_COMPLETED",
+                component="STARTUP_RECOVERY",
+                payload=summary
+            ))
             return summary
 
         finally:

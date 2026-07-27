@@ -3,6 +3,7 @@
 
 from typing import Dict, Any, Optional, Callable
 from utils.logger import get_logger
+from dev_tools.drm import emit_event
 
 logger = get_logger(__name__)
 
@@ -41,7 +42,7 @@ class TradeEngine:
         quantity_calculator: Optional[Callable[[Any, Any], Any]] = None,
         order_builder: Optional[Callable[[Any, Any, Any, Any], Any]] = None,
         broker_dispatcher: Optional[Callable[[Any], Any]] = None,
-        execution_writer: Optional[Callable[[Any], Any]] = None,
+        execution_writer: Optional[Callable[[Any, Any], Any]] = None,
     ):
         """
         Constructor dependency injection for all pipeline stages.
@@ -91,12 +92,30 @@ class TradeEngine:
                 "RUNTIME_REJECTED", "RISK_REJECTED", "BROKER_FAILED", "INTERNAL_ERROR"
             )
 
+        from dev_tools.drm import global_event_bus, RuntimeEvent
+
         # Check if Context Builder rejected (e.g. session invalid or fetch error)
         if is_rejection(context):
             execution_result = context
+            emit_event(
+                event_type="RUNTIME_VALIDATION_FAILED",
+                component="TRADE_ENGINE",
+                execution_target_id=target_id,
+                severity="ERROR",
+                payload={"fail_reason": getattr(context, "fail_reason", "CONTEXT_BUILD_FAILED")}
+            )
         else:
             # Extract signal from context if not passed explicitly
             effective_signal = signal_data or (getattr(context, "signal", None) if context else None)
+            symbol = effective_signal.get("symbol") if isinstance(effective_signal, dict) else getattr(effective_signal, "symbol", "")
+            action = effective_signal.get("action") if isinstance(effective_signal, dict) else getattr(effective_signal, "action", "")
+
+            emit_event(
+                event_type="EXECUTION_STARTED",
+                component="TRADE_ENGINE",
+                execution_target_id=target_id,
+                payload={"symbol": symbol, "action": action}
+            )
 
             # 2. Runtime Validator
             if not execution_result and self._runtime_validator and context:
@@ -105,6 +124,20 @@ class TradeEngine:
                 if is_rejection(val_result):
                     logger.warning(f"Trade Engine [Stage 2]: Runtime Validator rejected target ID {target_id}.")
                     execution_result = val_result
+                    emit_event(
+                        event_type="RUNTIME_VALIDATION_FAILED",
+                        component="TRADE_ENGINE",
+                        execution_target_id=target_id,
+                        severity="ERROR",
+                        payload={"fail_reason": getattr(val_result, "fail_reason", "RUNTIME_VALIDATION_FAILED")}
+                    )
+                else:
+                    emit_event(
+                        event_type="RUNTIME_VALIDATION_PASSED",
+                        component="TRADE_ENGINE",
+                        execution_target_id=target_id,
+                        payload={"symbol": symbol}
+                    )
 
             # 3. Risk Manager
             risk_budget = None
@@ -113,10 +146,27 @@ class TradeEngine:
                 risk_res = self._risk_manager(context)
                 if is_rejection(risk_res):
                     logger.warning(f"Trade Engine [Stage 3]: Risk Manager rejected target ID {target_id}.")
-
                     execution_result = risk_res
+                    emit_event(
+                        event_type="RISK_CHECK_FAILED",
+                        component="TRADE_ENGINE",
+                        execution_target_id=target_id,
+                        severity="ERROR",
+                        payload={"fail_reason": getattr(risk_res, "fail_reason", "RISK_REJECTED")}
+                    )
                 else:
                     risk_budget = risk_res
+                    emit_event(
+                        event_type="RISK_CHECK_PASSED",
+                        component="TRADE_ENGINE",
+                        execution_target_id=target_id,
+                        payload={
+                            "capital_base": float(getattr(risk_budget, "capital_base", 0)),
+                            "net_value": float(getattr(context.funds, "net_value", 0)) if context and context.funds else 0.0,
+                            "available_cash": float(getattr(context.funds, "available_cash", 0)) if context and context.funds else 0.0,
+                            "max_risk": float(getattr(risk_budget, "max_loss_rupees", 0))
+                        }
+                    )
 
             # 4. Quantity Calculator
             order_qty = None
@@ -126,8 +176,21 @@ class TradeEngine:
                 if is_rejection(qty_res):
                     logger.warning(f"Trade Engine [Stage 4]: Quantity Calculator rejected target ID {target_id}.")
                     execution_result = qty_res
+                    emit_event(
+                        event_type="QUANTITY_CALC_FAILED",
+                        component="TRADE_ENGINE",
+                        execution_target_id=target_id,
+                        severity="ERROR",
+                        payload={"fail_reason": getattr(qty_res, "fail_reason", "QUANTITY_BELOW_MINIMUM")}
+                    )
                 else:
                     order_qty = qty_res
+                    emit_event(
+                        event_type="QUANTITY_CALCULATED",
+                        component="TRADE_ENGINE",
+                        execution_target_id=target_id,
+                        payload={"quantity": getattr(order_qty, "quantity", 0)}
+                    )
 
             # 5. Order Builder
             order_spec = None
@@ -140,17 +203,46 @@ class TradeEngine:
                     execution_result = order_res
                 else:
                     order_spec = order_res
+                    emit_event(
+                        event_type="ORDER_SPEC_CREATED",
+                        component="TRADE_ENGINE",
+                        execution_target_id=target_id,
+                        payload={"symbol": getattr(order_spec, "symbol", ""), "quantity": getattr(order_spec, "quantity", 0), "price": float(getattr(order_spec, "price", 0))}
+                    )
 
             # 6. Broker Dispatcher
             if not execution_result and self._broker_dispatcher and order_spec:
-
                 logger.debug(f"Trade Engine [Stage 6]: Submitting order via Broker Dispatcher for target ID {target_id}...")
                 execution_result = self._broker_dispatcher(order_spec)
+                broker_order_id = getattr(execution_result, "broker_order_id", None)
+                if is_rejection(execution_result):
+                    emit_event(
+                        event_type="ENTRY_REJECTED",
+                        component="TRADE_ENGINE",
+                        execution_target_id=target_id,
+                        severity="ERROR",
+                        payload={"fail_reason": getattr(execution_result, "fail_reason", "BROKER_FAILED")}
+                    )
+                else:
+                    emit_event(
+                        event_type="ENTRY_SUBMITTED",
+                        component="TRADE_ENGINE",
+                        execution_target_id=target_id,
+                        broker_order_id=broker_order_id,
+                        payload={}
+                    )
 
         # 7. Execution Writer (Unified persistence entry point for all outcomes per Section 4 & 5.13)
         if self._execution_writer and execution_result:
             logger.debug(f"Trade Engine [Stage 7]: Persisting execution result via Execution Writer for target ID {target_id}...")
-            return self._execution_writer(execution_result)
+            written_result = self._execution_writer(execution_result, order_spec)
+            emit_event(
+                event_type="EXECUTION_RECORDED",
+                component="TRADE_ENGINE",
+                execution_target_id=target_id,
+                payload={"outcome": getattr(execution_result, "outcome", "")}
+            )
+            return written_result
 
         logger.info(f"Trade Engine completed orchestration for target ID {target_id}.")
         return execution_result

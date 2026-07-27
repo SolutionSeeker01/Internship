@@ -131,9 +131,11 @@ class ZerodhaBroker(BaseBroker):
                 ))
         return normalized_candles
 
-    def start_feed(self, loop: Any, subscription_tokens: List[int], on_tick_callback: Any) -> None:
+    def start_feed(self, loop: Any, subscription_tokens: List[int], on_tick_callback: Any, on_order_update_callback: Any = None) -> None:
         """
         Spawns the background WebSocket client feed for this broker.
+        Registers on_tick_callback for market data ticks.
+        Registers on_order_update_callback (if provided) for broker order fill/rejection events.
         """
         from kiteconnect import KiteTicker
 
@@ -145,16 +147,22 @@ class ZerodhaBroker(BaseBroker):
             return
 
         self._on_tick_callback = on_tick_callback
+        self._on_order_update_callback = on_order_update_callback
         self._subscribed_tokens = set(subscription_tokens)
 
         try:
             self._kws = KiteTicker(api_key=self.api_key, access_token=self.access_token)
 
-            # Register callbacks
+            # Register market data callbacks
             self._kws.on_connect = self._on_ticker_connect
             self._kws.on_ticks = self._on_ticker_ticks
             self._kws.on_error = self._on_ticker_error
             self._kws.on_close = self._on_ticker_close
+
+            # Register order update callback if provided
+            if on_order_update_callback is not None:
+                self._kws.on_order_update = self._on_ticker_order_update
+                logger.info("Zerodha KiteTicker: on_order_update callback registered for fill tracking.")
 
             logger.info("Connecting to Zerodha KiteTicker WebSocket...")
             self._kws.connect(threaded=True)
@@ -162,6 +170,7 @@ class ZerodhaBroker(BaseBroker):
             logger.critical(f"Failed to start Zerodha KiteTicker: {e}", exc_info=True)
             self._kws = None
             self._on_tick_callback = None
+            self._on_order_update_callback = None
             raise BrokerAdapterException("Failed to start Zerodha KiteTicker feed.", original_exception=e)
 
     def stop_feed(self) -> None:
@@ -219,6 +228,21 @@ class ZerodhaBroker(BaseBroker):
             ws.subscribe(tokens)
             ws.set_mode(ws.MODE_FULL, tokens)
             logger.info(f"Successfully subscribed to {len(tokens)} tokens in FULL mode on connect.")
+
+    def _on_ticker_order_update(self, order_update: dict):
+        """
+        Receives raw Zerodha KiteTicker order update dict and forwards it to
+        the registered on_order_update_callback (typically OrderManagerService.process_broker_order_update).
+
+        The KiteTicker delivers order updates with the same field names as kite.orders() rows:
+          order_id, status, filled_quantity, average_price, tradingsymbol, etc.
+        """
+        if not hasattr(self, "_on_order_update_callback") or not self._on_order_update_callback:
+            return
+        try:
+            self._on_order_update_callback(order_update)
+        except Exception as e:
+            logger.error(f"ZerodhaBroker: error in on_order_update_callback: {e}", exc_info=True)
 
     def _on_ticker_ticks(self, ws, ticks):
         if not hasattr(self, "_on_tick_callback") or not self._on_tick_callback:
@@ -367,17 +391,37 @@ class ZerodhaBroker(BaseBroker):
     def get_margins(self) -> Dict[str, Any]:
         """
         Queries available funds and margin metrics from Zerodha.
+
+        Returns a dict with the following keys per BaseBroker contract:
+          - 'available_cash'   : float  — cash available for equity trades
+          - 'utilized_margin'  : float  — margin already debited by open positions
+          - 'collateral'       : float  — approved collateral value
+          - 'net_value'        : float  — net account equity (equity_margins["net"])
+
+        Raises BrokerAdapterException immediately if the broker response is missing
+        the authoritative 'net' field rather than substituting a silent fallback.
         """
         try:
             kite = self._get_client()
             margins = kite.margins()
-            # Fetch equity margins specifically (defaults to 0 if key not found)
             equity_margins = margins.get("equity", {})
+
+            # Fail fast if the authoritative net equity field is absent.
+            # Do NOT fall back to available.cash — it is a different metric.
+            if "net" not in equity_margins:
+                raise BrokerAdapterException(
+                    "Zerodha margins response is missing the required 'net' field in the "
+                    "'equity' segment. Cannot compute net account value."
+                )
+
             return {
                 "available_cash": float(equity_margins.get("available", {}).get("cash", 0.0)),
                 "utilized_margin": float(equity_margins.get("utilised", {}).get("debits", 0.0)),
-                "collateral": float(equity_margins.get("available", {}).get("collateral", 0.0))
+                "collateral": float(equity_margins.get("available", {}).get("collateral", 0.0)),
+                "net_value": float(equity_margins["net"])
             }
+        except BrokerAdapterException:
+            raise
         except Exception as e:
             logger.error(f"Failed to fetch Zerodha margins: {e}")
             raise BrokerAdapterException("Failed to retrieve margin stats from broker.", original_exception=e)
@@ -506,5 +550,65 @@ class ZerodhaBroker(BaseBroker):
         except Exception as e:
             logger.warning(f"Zerodha get_order_by_tag failed for tag {tag}: {e}")
             raise BrokerAdapterException(f"Order tag query failed: {e}", original_exception=e)
+
+    def cancel_order(self, broker_order_id: str) -> bool:
+        """
+        Cancels an open order at Zerodha by its broker_order_id.
+
+        Uses the variety='regular' as the default; SL and CO orders require different
+        varieties but the platform currently only places regular (MIS/CNC) orders.
+
+        :param broker_order_id: The Zerodha order_id string to cancel.
+        :return: True if the cancellation request was accepted by the broker.
+        :raises BrokerAdapterException: If the cancellation API call fails.
+        """
+        try:
+            kite = self._get_client()
+            kite.cancel_order(variety=kite.VARIETY_REGULAR, order_id=broker_order_id)
+            logger.info(f"ZerodhaBroker: cancel_order accepted for broker_order_id={broker_order_id}")
+            return True
+        except Exception as e:
+            logger.error(f"ZerodhaBroker: cancel_order failed for broker_order_id={broker_order_id}: {e}")
+            raise BrokerAdapterException(
+                f"Failed to cancel order {broker_order_id} at Zerodha.",
+                original_exception=e
+            )
+
+    def modify_order(self, broker_order_id: str, modifications: Dict[str, Any]) -> bool:
+        """
+        Modifies an open order at Zerodha.
+
+        Supported modification keys (per KiteConnect API):
+          - 'price'           : float — new limit price
+          - 'trigger_price'   : float — new trigger price (for SL orders)
+          - 'quantity'        : int   — new quantity
+          - 'order_type'      : str   — new order type (LIMIT, SL, etc.)
+
+        :param broker_order_id: The Zerodha order_id string to modify.
+        :param modifications: Dict of fields to update.
+        :return: True if the modification was accepted by the broker.
+        :raises BrokerAdapterException: If the modification API call fails.
+        """
+        try:
+            kite = self._get_client()
+            params = {"order_id": broker_order_id, "variety": kite.VARIETY_REGULAR}
+            if "price" in modifications:
+                params["price"] = float(modifications["price"])
+            if "trigger_price" in modifications:
+                params["trigger_price"] = float(modifications["trigger_price"])
+            if "quantity" in modifications:
+                params["quantity"] = int(modifications["quantity"])
+            if "order_type" in modifications:
+                params["order_type"] = str(modifications["order_type"])
+
+            kite.modify_order(**params)
+            logger.info(f"ZerodhaBroker: modify_order accepted for broker_order_id={broker_order_id}, modifications={modifications}")
+            return True
+        except Exception as e:
+            logger.error(f"ZerodhaBroker: modify_order failed for broker_order_id={broker_order_id}: {e}")
+            raise BrokerAdapterException(
+                f"Failed to modify order {broker_order_id} at Zerodha.",
+                original_exception=e
+            )
 
 

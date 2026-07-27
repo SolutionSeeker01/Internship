@@ -51,6 +51,10 @@ def write_execution_result(
         record_execution_result(execution_result, order_spec=order_spec)
     except Exception as err:
         logger.error(f"Execution Writer failed to persist result for target ID {target_id}: {err}")
+        # Re-raise: swallowing this exception leaves signal_execution_targets stuck in EXECUTING
+        # state, which causes StartupRecoveryService to re-feed the target and potentially
+        # double-place the same order on the next server restart.
+        raise
 
     # Return passive ExecutionResult DTO
     return execution_result

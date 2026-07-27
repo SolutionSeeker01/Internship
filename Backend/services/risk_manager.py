@@ -12,26 +12,26 @@ from models.risk_budget import RiskBudget
 def evaluate_risk(context: ExecutionContext) -> Union[RiskBudget, ExecutionResult]:
     """
     Evaluates client account solvency and determines the maximum allowable risk budget for a trade.
-    
-    Implements Section 5.7 (Risk Manager) of the Architecture Reference v1.3.
-    
+
+    Implements Section 5.7 (Risk Manager) of the Architecture Reference.
+
     Responsibilities:
-      - Reads ExecutionContext.funds.available_cash
-      - Verifies available_cash > 0
-      - Calculates RiskBudget.max_loss_rupees = available_cash * 0.01 (1%) via Decimal
+      - Reads ExecutionContext.funds.net_value (Net Account Value / Equity)
+      - Verifies net_value > 0
+      - Calculates RiskBudget.max_loss_rupees = net_value * 0.01 (1% of Net Account Value) via Decimal
       - Returns RiskBudget DTO on success
-      - Returns ExecutionResult(outcome="RISK_REJECTED", fail_reason="INSUFFICIENT_FUNDS") if not solvent
-      
+      - Returns ExecutionResult(outcome="RISK_REJECTED", fail_reason="INSUFFICIENT_FUNDS") if net_value <= 0
+
     Constraints:
+      - Sizing rule: Risk Budget = 1% of Net Account Value (net_value)
       - NO quantity calculation (owned by Quantity Calculator - Stage 4)
-      - NO margin requirement check (owned by Order Builder - Stage 5 & Broker RMS - Stage 6)
       - Pure deterministic evaluation using exact Decimal arithmetic
     """
-    # Read available_cash from ExecutionContext.funds
-    available_cash = context.funds.available_cash if context.funds else Decimal("0")
-    
-    # Solvency Check: available_cash > 0
-    if available_cash <= Decimal("0"):
+    # Read net_value (Net Account Value) from ExecutionContext.funds
+    net_value = context.funds.net_value if context.funds else Decimal("0")
+
+    # Solvency Check: net_value > 0
+    if net_value <= Decimal("0"):
         return create_rejection_result(
             context,
             outcome="RISK_REJECTED",
@@ -39,10 +39,10 @@ def evaluate_risk(context: ExecutionContext) -> Union[RiskBudget, ExecutionResul
             fail_category="PERMANENT"
         )
 
-    # 1% Risk Budget calculation via Decimal
-    max_loss_rupees = (available_cash * Decimal("0.01")).quantize(Decimal("0.0001"), rounding=ROUND_FLOOR)
+    # 1% Risk Budget calculation via Decimal based on Net Account Value (capital_base)
+    max_loss_rupees = (net_value * Decimal("0.01")).quantize(Decimal("0.0001"), rounding=ROUND_FLOOR)
 
     return RiskBudget(
-        available_cash=available_cash,
+        capital_base=net_value,
         max_loss_rupees=max_loss_rupees
     )

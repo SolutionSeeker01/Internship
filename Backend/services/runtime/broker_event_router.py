@@ -138,11 +138,37 @@ class BrokerEventRouter:
                 return {"status": "SKIPPED", "reason": "MANAGER_NOT_REGISTERED", "trade_id": trade_id}
 
             # 3. Dispatch event update to the target OrderManagerService
+            from dev_tools.drm import global_event_bus, RuntimeEvent
+            global_event_bus.publish(RuntimeEvent(
+                event_type="BROKER_CALLBACK_RECEIVED",
+                component="BROKER_EVENT_ROUTER",
+                trade_id=trade_id,
+                order_id=broker_order_id,
+                payload={"status": event_payload.get("status"), "broker_order_id": broker_order_id}
+            ))
+
+            logger.info(f"Dispatching broker callback for order '{broker_order_id}' to OrderManager for trade ID {trade_id}...")
+            
+            # Delegate callback handling to order manager
             dispatch_status = "DISPATCHED"
             try:
-                # Direct contract call to manager update method (if supported)
-                if hasattr(manager, "on_broker_order_update"):
-                    manager.on_broker_order_update(order_record=order_record, payload=event_payload)
+                if hasattr(manager, "process_broker_order_update"):
+                    # Normalize the payload: forward using 'order_id' key which matches
+                    # what KiteTicker sends and what process_broker_order_update expects.
+                    normalized_payload = dict(event_payload)
+                    normalized_payload.setdefault("order_id", broker_order_id)
+                    manager.process_broker_order_update(normalized_payload)
+                else:
+                    logger.warning(f"OrderManagerService for trade {trade_id} has no process_broker_order_update method — cannot dispatch broker event.")
+                    dispatch_status = "DISPATCH_SKIPPED_NO_HANDLER"
+
+                global_event_bus.publish(RuntimeEvent(
+                    event_type="BROKER_CALLBACK_DISPATCHED",
+                    component="BROKER_EVENT_ROUTER",
+                    trade_id=trade_id,
+                    order_id=broker_order_id,
+                    payload={"result": str(result)}
+                ))
             except Exception as dispatch_err:
                 logger.error(f"Error during manager callback dispatch for Trade ID {trade_id}: {dispatch_err}", exc_info=True)
                 dispatch_status = "DISPATCH_ERROR"

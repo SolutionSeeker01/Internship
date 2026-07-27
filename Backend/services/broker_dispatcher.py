@@ -1,17 +1,35 @@
 # broker_dispatcher.py - Broker Dispatcher Service
 'use strict'
 
-import time
+import threading
 from datetime import datetime
 from typing import Optional, Any
 
 from models.execution_context import ExecutionContext
-from models.execution_result import ExecutionResult, create_rejection_result
+from models.execution_result import ExecutionResult
 from models.order_spec import OrderSpec
 from services.brokers.factory import BrokerFactory
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+# Module-level shutdown event used to make transient backoff waits interruptible.
+# On graceful server shutdown, call dispatcher_request_shutdown() before stopping
+# the executor so in-flight dispatcher threads are not held open for up to 4 s.
+_shutdown_event = threading.Event()
+
+
+def dispatcher_request_shutdown() -> None:
+    """
+    Signals all in-flight dispatch_order() calls that the process is shutting down.
+    Sets the module-level shutdown event so any pending backoff waits wake up
+    immediately and exit without issuing further broker attempts.
+
+    Call this from the application shutdown handler (lifespan / on_event("shutdown"))
+    before stopping the ThreadPoolExecutor that hosts the dispatcher threads.
+    """
+    _shutdown_event.set()
+    logger.info("BrokerDispatcher: shutdown event set — all pending backoff waits will be interrupted.")
 
 
 def map_broker_exception_reason(error_msg: str) -> tuple:
@@ -20,7 +38,7 @@ def map_broker_exception_reason(error_msg: str) -> tuple:
     Section 9 (Failure Classification) & Section 5.10 (Broker Dispatcher).
     """
     err_lower = error_msg.lower()
-    
+
     if "session" in err_lower or "token" in err_lower or "401" in err_lower or "403" in err_lower:
         return ("BROKER_SESSION_EXPIRED", "PERMANENT")
     elif "margin" in err_lower or "funds" in err_lower or "insufficient" in err_lower or "rms" in err_lower:
@@ -42,15 +60,21 @@ def dispatch_order(
 ) -> ExecutionResult:
     """
     Submits a broker-independent OrderSpec to the active broker via BrokerInterface with transient retries.
-    
+
     Implements Section 5.10 (Broker Dispatcher) of the Architecture Reference v1.3.
-    
+
     Responsibilities:
       - Resolves active broker adapter using BrokerFactory or ExecutionContext
       - Submits order via broker_adapter.place_order(order_spec, idempotency_key)
-      - Executes Section 5.10 Transient Retry Policy (1s -> 2s -> 5s backoff, up to 3 attempts)
+      - Executes Section 5.10 Transient Retry Policy (1s -> 3s backoff, up to 3 attempts)
       - Maps broker responses / errors to standardized platform ExecutionResult DTOs
-      
+
+    Backoff Design:
+      Backoff waits use threading.Event.wait(timeout) instead of time.sleep() so that
+      all in-flight dispatcher threads immediately wake up and return when
+      dispatcher_request_shutdown() is called during graceful server shutdown.
+      This prevents the process from hanging up to 4 s per in-flight order during shutdown.
+
     Constraints:
       - NO broker name checks (if broker == 'ZERODHA' is forbidden per Principle P4)
       - NO rate limiting (owned by adapter)
@@ -96,26 +120,48 @@ def dispatch_order(
             executed_at=datetime.now()
         )
 
-    # Section 5.10 Transient Retry Policy: Attempt 1 immediately, 2 after 1s/2s, 3 after 5s
+    # Section 5.10 Transient Retry Policy: Attempt 1 immediately, 2 after 1s, 3 after 3s.
+    # backoff_delays[i] is the wait (seconds) before attempt i+1.
     max_attempts = 3
-    backoff_delays = [0, 1, 3] # seconds delay before attempt
-    
+    backoff_delays = [0, 1, 3]  # seconds delay before each attempt (index 0 = attempt 1 = no wait)
+
     last_reason = "BROKER_UNAVAILABLE"
     last_category = "PERMANENT"
 
     for attempt in range(1, max_attempts + 1):
+        # Wait before retry attempts only (attempt 1 is immediate).
+        # Uses threading.Event.wait() instead of time.sleep() so the wait is
+        # interrupted immediately if dispatcher_request_shutdown() is called.
         if attempt > 1:
             delay = backoff_delays[attempt - 1]
-            logger.warning(f"Broker Dispatcher transient retry attempt {attempt}/{max_attempts} after {delay}s backoff for target ID {target_id}...")
-            time.sleep(delay)
+            logger.warning(
+                f"Broker Dispatcher transient retry attempt {attempt}/{max_attempts} "
+                f"after {delay}s backoff for target ID {target_id}..."
+            )
+            shutdown_triggered = _shutdown_event.wait(timeout=delay)
+            if shutdown_triggered:
+                # Server is shutting down — abort remaining retry attempts immediately.
+                logger.warning(
+                    f"Broker Dispatcher backoff interrupted by shutdown signal for target ID {target_id}. "
+                    "Aborting remaining retry attempts."
+                )
+                last_reason = "DISPATCHER_SHUTDOWN"
+                last_category = "PERMANENT"
+                break
 
         try:
-            logger.info(f"Broker Dispatcher submitting order (attempt {attempt}) for symbol {order_spec.symbol} target ID {target_id}...")
+            logger.info(
+                f"Broker Dispatcher submitting order (attempt {attempt}) "
+                f"for symbol {order_spec.symbol} target ID {target_id}..."
+            )
             response = broker_adapter.place_order(order_spec, idempotency_key=idempotency_key)
 
             broker_order_id = str(response.get("broker_order_id", ""))
-            
-            logger.info(f"Broker Dispatcher order submitted successfully: broker_order_id={broker_order_id} for target ID {target_id}.")
+
+            logger.info(
+                f"Broker Dispatcher order submitted successfully: "
+                f"broker_order_id={broker_order_id} for target ID {target_id}."
+            )
             return ExecutionResult(
                 execution_target_id=target_id,
                 signal_id=signal_id,
@@ -132,7 +178,10 @@ def dispatch_order(
         except Exception as e:
             error_str = str(e)
             reason, category = map_broker_exception_reason(error_str)
-            logger.warning(f"Broker submission attempt {attempt} failed: reason={reason}, category={category}, err={error_str}")
+            logger.warning(
+                f"Broker submission attempt {attempt} failed: "
+                f"reason={reason}, category={category}, err={error_str}"
+            )
 
             last_reason = reason
             last_category = category
@@ -141,9 +190,11 @@ def dispatch_order(
             if category == "PERMANENT":
                 break
 
-    # If all transient attempts exhausted or permanent rejection hit
+    # All transient attempts exhausted, permanent rejection hit, or shutdown aborted.
     final_reason = last_reason if last_category == "PERMANENT" else "TRANSIENT_EXHAUSTED"
-    logger.error(f"Broker Dispatcher submission failed for target ID {target_id}: final_reason={final_reason}")
+    logger.error(
+        f"Broker Dispatcher submission failed for target ID {target_id}: final_reason={final_reason}"
+    )
 
     return ExecutionResult(
         execution_target_id=target_id,

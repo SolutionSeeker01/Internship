@@ -78,10 +78,12 @@ class BaseBroker(ABC):
         pass
 
     @abstractmethod
-    def start_feed(self, loop: Any, subscription_tokens: List[int], on_tick_callback: Any) -> None:
+    def start_feed(self, loop: Any, subscription_tokens: List[int], on_tick_callback: Any, on_order_update_callback: Optional[Any] = None) -> None:
         """
         Spawns the background WebSocket client feed for this broker.
         When a new tick is received and normalized, it executes on_tick_callback(normalized_data).
+        When an order update (fill, rejection) is received, it executes on_order_update_callback(order_update_dict)
+        if provided. This closes the fill-tracking feedback loop for OrderManagerService.
         """
         pass
 
@@ -147,6 +149,7 @@ class BaseBroker(ABC):
         - 'available_cash': float
         - 'utilized_margin': float
         - 'collateral': float
+        - 'net_value': float
         """
         pass
 
@@ -180,6 +183,29 @@ class BaseBroker(ABC):
         """
         Queries broker for an existing order by its tag / idempotency_key.
         Returns standardized order dict if found, or None if not found.
+        """
+        pass
+
+    @abstractmethod
+    def cancel_order(self, broker_order_id: str) -> bool:
+        """
+        Cancels an open order at the broker by its broker_order_id.
+
+        :param broker_order_id: The broker-assigned order ID to cancel.
+        :return: True if the cancellation request was accepted.
+        :raises BrokerAdapterException: If the cancellation fails.
+        """
+        pass
+
+    @abstractmethod
+    def modify_order(self, broker_order_id: str, modifications: Dict[str, Any]) -> bool:
+        """
+        Modifies an open order at the broker.
+
+        :param broker_order_id: The broker-assigned order ID to modify.
+        :param modifications: Dict of fields to update (e.g. {'price': Decimal, 'trigger_price': Decimal}).
+        :return: True if the modification was accepted.
+        :raises BrokerAdapterException: If the modification fails.
         """
         pass
 

@@ -22,7 +22,14 @@ from routers.webhook import router as webhook_router
 from routers.signals import router as signals_router
 from routers.instruments import router as instruments_router
 from routers.dashboard import router as dashboard_router
-from market_data.kite_client import start_market_data_service
+from market_data.kite_client import start_market_data_service, register_order_update_callback
+from services.brokers.factory import BrokerFactory
+from services.runtime.runtime_coordinator import RuntimeCoordinator
+
+# Module-level RuntimeCoordinator singleton.
+# Owns: OrderManagerRegistry, BrokerEventRouter, StartupRecoveryService, TickRouter.
+# Initialized during lifespan startup; shut down during lifespan shutdown.
+_runtime_coordinator: RuntimeCoordinator = RuntimeCoordinator(broker_factory=BrokerFactory)
 
 
 @asynccontextmanager
@@ -121,16 +128,85 @@ async def lifespan(app: FastAPI):
     except Exception as scan_err:
         logger.error(f"Critical error scanning connected MASTERs on startup: {scan_err}")
 
-    # Market data service is now dynamically started upon successful broker callback verification.
+    # Pre-startup database table counts logging
+    try:
+        from database.db import SessionLocal
+        from sqlalchemy import text
+        pre_session = SessionLocal()
+        sig_cnt = pre_session.execute(text("SELECT COUNT(*) FROM signals;")).scalar()
+        set_cnt = pre_session.execute(text("SELECT COUNT(*) FROM signal_execution_targets;")).scalar()
+        trd_cnt = pre_session.execute(text("SELECT COUNT(*) FROM trades;")).scalar()
+        ord_cnt = pre_session.execute(text("SELECT COUNT(*) FROM orders;")).scalar()
+        logger.info(f"PRE-RECOVERY DB COUNTS -> signals: {sig_cnt}, signal_execution_targets: {set_cnt}, trades: {trd_cnt}, orders: {ord_cnt}")
+        pre_session.close()
+    except Exception as count_err:
+        logger.warning(f"Pre-recovery DB count log failed: {count_err}")
+
+    # Initialize RuntimeCoordinator infrastructure (OrderManagerRegistry, BrokerEventRouter,
+    # StartupRecoveryService, TickRouter) and execute startup crash recovery.
+    try:
+        _runtime_coordinator.initialize()
+        recovery_summary = _runtime_coordinator.start()
+        logger.info(f"RuntimeCoordinator started. Recovery summary: {recovery_summary}")
+    except Exception as coordinator_err:
+        logger.error(f"Failed to initialize/start RuntimeCoordinator on startup: {coordinator_err}", exc_info=True)
+        # Non-fatal: log and continue. Live fills won't be tracked but entry pipeline is unaffected.
+
+    # Register the broker order update callback BEFORE start_market_data_service() is called.
+    # This wires the KiteTicker on_order_update stream →  BrokerEventRouter → OrderManagerService,
+    # so broker fill/rejection events update the orders table from PLACED → COMPLETE.
+    try:
+        broker_event_router = _runtime_coordinator.get_broker_event_router()
+        register_order_update_callback(broker_event_router.process_broker_event)
+        logger.info("Order update callback registered: KiteTicker on_order_update → BrokerEventRouter.")
+    except Exception as cb_err:
+        logger.error(f"Failed to register order update callback: {cb_err}", exc_info=True)
+        # Non-fatal: entry pipeline still functions; live fills simply won't auto-update.
+
+    # Start Execution Dispatcher background worker thread
+    try:
+        from services.execution_dispatcher import global_execution_dispatcher
+        global_execution_dispatcher.start()
+        logger.info("Execution Dispatcher background worker successfully started.")
+    except Exception as disp_err:
+        logger.error(f"Failed to start Execution Dispatcher on startup: {disp_err}")
+
     yield  # Hand over control to run the FastAPI server
 
-    # Clean up operations go here (e.g. closing websocket threads/clients if needed)
+    # ── Shutdown sequence ────────────────────────────────────────────────────
+    # 1. Signal broker dispatcher threads to exit backoff waits immediately.
+    #    Must happen BEFORE stopping the dispatcher thread so in-flight transient
+    #    retries don't hold the thread for up to 4 s after stop() is called.
+    try:
+        from services.broker_dispatcher import dispatcher_request_shutdown
+        dispatcher_request_shutdown()
+        logger.info("Broker dispatcher shutdown signal sent.")
+    except Exception as ds_err:
+        logger.error(f"Error sending dispatcher shutdown signal: {ds_err}")
+
+    # 2. Stop Execution Dispatcher polling loop.
+    try:
+        from services.execution_dispatcher import global_execution_dispatcher
+        logger.info("Stopping Execution Dispatcher during application shutdown...")
+        global_execution_dispatcher.stop()
+    except Exception as disp_stop_err:
+        logger.error(f"Error stopping Execution Dispatcher during shutdown: {disp_stop_err}")
+
+    # 3. Shut down RuntimeCoordinator (registry, event router, tick router cleanup).
+    try:
+        _runtime_coordinator.shutdown()
+        logger.info("RuntimeCoordinator shut down cleanly.")
+    except Exception as rc_err:
+        logger.error(f"Error shutting down RuntimeCoordinator: {rc_err}")
+
+    # 4. Stop market data feed.
     try:
         from market_data.kite_client import stop_market_data_service
         logger.info("Stopping market data service during application shutdown")
         stop_market_data_service()
     except Exception as shutdown_err:
         logger.error(f"Error stopping market data service during shutdown: {shutdown_err}")
+
     logger.info("Shutting down FastAPI application lifespan context...")
 
 
@@ -159,6 +235,7 @@ from routers.watchlist import router as watchlist_router
 from routers.client_dashboard import router as client_dashboard_router
 from routers.strategy_management import router as strategy_management_router
 from routers.client_strategies import router as client_strategies_router
+from routers.dev_telemetry import router as dev_telemetry_router
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from exceptions import PlatformException
@@ -176,6 +253,7 @@ app.include_router(watchlist_router)
 app.include_router(client_dashboard_router)
 app.include_router(strategy_management_router)
 app.include_router(client_strategies_router)
+app.include_router(dev_telemetry_router)
 
 
 @app.exception_handler(PlatformException)

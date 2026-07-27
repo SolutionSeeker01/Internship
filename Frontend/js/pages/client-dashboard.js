@@ -85,7 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 elTodayPnL.style.color = summary.today_pnl >= 0 ? 'var(--color-positive)' : 'var(--color-negative)';
             }
 
-            if (elAvailableCash) elAvailableCash.textContent = formatCurrency(summary.available_cash);
+            if (elAvailableCash) elAvailableCash.textContent = formatCurrency(summary.net_value ?? summary.net_cash ?? summary.capital_base ?? summary.available_cash);
             if (elUtilizedMargin) elUtilizedMargin.textContent = formatCurrency(summary.utilized_margin);
             if (elMarginUtilization) elMarginUtilization.textContent = formatPct(summary.margin_utilization_pct);
             if (elDailyDrawdown) elDailyDrawdown.textContent = formatPct(summary.daily_drawdown_pct);

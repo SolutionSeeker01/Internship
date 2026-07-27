@@ -74,6 +74,7 @@ def get_dashboard_summary(current_user: User = Depends(get_current_user), db: Se
     # 2. Query margins from broker for cash totals
     available_cash = 0.0
     utilized_margin = 0.0
+    net_value = 0.0
     margin_utilization_pct = 0.0
 
     if connection_status == "CONNECTED":
@@ -82,7 +83,8 @@ def get_dashboard_summary(current_user: User = Depends(get_current_user), db: Se
             margins = broker.get_margins()
             available_cash = margins.get("available_cash", 0.0)
             utilized_margin = margins.get("utilized_margin", 0.0)
-            total = available_cash + utilized_margin
+            net_value = margins.get("net_value", available_cash)
+            total = net_value if net_value > 0 else (available_cash + utilized_margin)
             if total > 0:
                 margin_utilization_pct = round((utilized_margin / total) * 100, 2)
         except Exception as e:
@@ -93,6 +95,9 @@ def get_dashboard_summary(current_user: User = Depends(get_current_user), db: Se
         "broker_name": account.broker,
         "connection_status": connection_status,
         "available_cash": available_cash,
+        "net_cash": net_value,
+        "net_value": net_value,
+        "capital_base": net_value,
         "utilized_margin": utilized_margin,
         "margin_utilization_pct": margin_utilization_pct,
         

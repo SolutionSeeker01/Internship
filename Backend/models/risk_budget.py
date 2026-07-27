@@ -9,12 +9,12 @@ from decimal import Decimal
 class RiskBudget:
     """
     Passive immutable DTO carrying the allowable monetary risk budget for a trade attempt.
-    
-    Implements Section 5.7 (Risk Manager) of the Architecture Reference v1.3.
-    
+
+    Implements Section 5.7 (Risk Manager) of the Architecture Reference.
+
     Fields:
-      - available_cash (Decimal): Client available trading capital snapshot
-      - max_loss_rupees (Decimal): Maximum allowable monetary loss (1% of available_cash)
+      - capital_base (Decimal): Client capital snapshot used for risk sizing (Net Account Value)
+      - max_loss_rupees (Decimal): Maximum allowable monetary loss (1% of capital_base)
     """
-    available_cash: Decimal
+    capital_base: Decimal
     max_loss_rupees: Decimal

@@ -37,6 +37,33 @@ _market_service_lock = threading.RLock()
 # Track periodic logging task reference to prevent duplicate leak tasks
 _summary_task: Optional[asyncio.Task] = None
 
+# Injectable broker order update callback. Set by the app startup sequence via
+# register_order_update_callback() before start_market_data_service() is called.
+# When set, broker fill/rejection events from the KiteTicker on_order_update
+# stream are forwarded to this callable (typically BrokerEventRouter.process_broker_event).
+_order_update_callback: Optional[Any] = None
+
+
+def register_order_update_callback(callback: Any) -> None:
+    """
+    Injects the broker order update callback for the KiteTicker on_order_update stream.
+
+    Must be called before start_market_data_service() to ensure the callback is
+    registered when the feed starts. Calling after the feed has started has no
+    effect on the current session.
+
+    Typical usage (in lifespan or startup handler):
+        from market_data.kite_client import register_order_update_callback
+        from services.runtime.broker_event_router import BrokerEventRouter
+        register_order_update_callback(broker_event_router.process_broker_event)
+
+    Args:
+        callback: Callable accepting a dict of broker order update fields.
+    """
+    global _order_update_callback
+    _order_update_callback = callback
+    logger.info("kite_client: broker order update callback registered.")
+
 
 async def _log_periodic_summary() -> None:
     """
@@ -312,10 +339,19 @@ def start_market_data_service(loop: asyncio.AbstractEventLoop, api_key: str, acc
                 _active_broker.access_token = access_token
 
             tokens = list(get_tokens())
+
+            # Build the order update callback that routes broker fill/rejection events
+            # to OrderManagerService.process_broker_order_update(), closing the fill-tracking
+            # feedback loop so orders transition from PLACED → COMPLETE in the database.
+            # The callback is injected at startup via register_order_update_callback() before
+            # start_market_data_service() is called.
+            _effective_order_update_callback = _order_update_callback
+
             _active_broker.start_feed(
                 loop=loop,
                 subscription_tokens=tokens,
-                on_tick_callback=on_tick_received
+                on_tick_callback=on_tick_received,
+                on_order_update_callback=_effective_order_update_callback
             )
             _market_service_running = True
             return

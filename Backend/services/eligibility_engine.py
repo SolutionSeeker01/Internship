@@ -7,6 +7,7 @@ from database.execution_target_repository import (
     bulk_insert_execution_targets
 )
 from utils.logger import get_logger
+from dev_tools.drm import emit_event
 
 logger = get_logger(__name__)
 
@@ -93,6 +94,19 @@ def run_eligibility_engine(signal_id: int, strategy_id: int) -> Dict[str, int]:
         f"Eligibility engine completed for Signal ID={signal_id}. "
         f"Summary: processed={processed_count}, ready={ready_count}, "
         f"skipped={skipped_count}, inserted={inserted_count}"
+    )
+
+    emit_event(
+        event_type="ELIGIBILITY_COMPLETED",
+        component="ELIGIBILITY_ENGINE",
+        payload={
+            "signal_id": signal_id,
+            "strategy_id": strategy_id,
+            "processed": processed_count,
+            "ready": ready_count,
+            "skipped": skipped_count,
+            "inserted": inserted_count
+        }
     )
 
     # 4. Return structured operational summary dictionary

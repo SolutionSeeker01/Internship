@@ -6,6 +6,7 @@ from database.signal_repository import save_signal, save_signal_and_return_id
 from services.signal_engine import calculate_targets
 from services.eligibility_engine import run_eligibility_engine
 from utils.logger import get_logger
+from dev_tools.drm import emit_event
 
 logger = get_logger(__name__)
 
@@ -34,6 +35,19 @@ async def webhook_ingest(payload: WebhookSignalRequest) -> dict:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Unauthorized: Invalid secret credential."
         )
+
+    # Instrument: Emit SIGNAL_RECEIVED event
+    emit_event(
+        event_type="SIGNAL_RECEIVED",
+        component="WEBHOOK_ROUTER",
+        payload={
+            "symbol": payload.symbol,
+            "action": payload.action,
+            "entry": float(payload.entry),
+            "sl": float(payload.sl),
+            "source": "WEBHOOK"
+        }
+    )
 
     # 2. Run business rules validator
     try:

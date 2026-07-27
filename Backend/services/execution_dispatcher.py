@@ -1,12 +1,31 @@
-# execution_dispatcher.py - Execution Dispatcher Orchestrator
-'use strict'
+# Backend/services/execution_dispatcher.py
+"""
+Execution Dispatcher Service — Background Target Polling & Pipeline Dispatcher
 
-import asyncio
-from typing import List, Dict, Any, Optional, Callable
-from database.execution_target_repository import (
-    claim_ready_execution_target,
-    fetch_ready_target_ids
-)
+Implements Section 5.3 of ARCHITECTURE_REFERENCE.md (v1.4).
+
+Responsibilities:
+  1. Periodically polls the database for `READY` execution targets (`fetch_ready_target_ids`).
+  2. Atomically claims each target (`claim_execution_target`), shifting status from `READY` -> `EXECUTING`.
+  3. Constructs and executes the `TradeEngine` pipeline (`trade_engine.execute(claimed_target)`).
+  4. Operates in a non-blocking background daemon thread during application lifespan.
+
+Constraints:
+  - Webhook endpoint remains strictly ingestion-only (never calls TradeEngine directly).
+  - Dispatcher is the SOLE consumer responsible for triggering TradeEngine execution.
+  - Zero business logic, risk calculations, or order sizing (delegated to TradeEngine stages).
+"""
+
+import time
+import threading
+from typing import Optional, Callable, Dict, Any
+from database.execution_target_repository import fetch_ready_target_ids, claim_ready_execution_target
+from services.trade_engine import TradeEngine
+from models.execution_context import ExecutionContext
+from models.risk_budget import RiskBudget
+from models.order_quantity import OrderQuantity
+from models.order_spec import OrderSpec
+from models.execution_result import ExecutionResult
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -14,115 +33,112 @@ logger = get_logger(__name__)
 
 class ExecutionDispatcher:
     """
-    Execution Dispatcher orchestrates target delivery from eligibility engine/polling
-    to the Trade Engine.
-    
-    Implements Section 5.3 (Execution Dispatcher) of the Architecture Reference.
-    
-    Responsibilities:
-      - Accepts or polls READY target IDs
-      - Atomically claims execution targets via conditional UPDATE (status -> EXECUTING)
-      - Enforces concurrency safety (prevents multiple workers from claiming same target)
-      - Invokes Trade Engine with claimed target data
-      
-    Constraints:
-      - Does NOT perform trading decisions, rules validation, margin calculation, or payload building
-      - Does NOT write execution outcomes or perform retries
+    Background polling service that claims READY targets and invokes TradeEngine pipeline.
     """
 
-    def __init__(self, trade_engine_invoker: Optional[Callable[[Dict[str, Any]], Any]] = None):
-        """
-        Initializes the Execution Dispatcher with an optional Trade Engine invoker callback.
-        
-        Args:
-            trade_engine_invoker (Callable): Callback function/interface that takes claimed 
-                                             target data dict and hands it off to Trade Engine.
-        """
-        self._notification_queue: asyncio.Queue[int] = asyncio.Queue()
-        self._trade_engine_invoker = trade_engine_invoker
+    def __init__(self, poll_interval_seconds: float = 0.5):
+        self.poll_interval = poll_interval_seconds
+        self._running = False
+        self._lock = threading.Lock()
+        self._worker_thread: Optional[threading.Thread] = None
 
-    def register_trade_engine_invoker(self, invoker: Callable[[Dict[str, Any]], Any]) -> None:
-        """
-        Registers or updates the Trade Engine invoker callback.
-        """
-        self._trade_engine_invoker = invoker
+    def start(self) -> None:
+        """Starts background dispatcher polling loop in a daemon thread."""
+        with self._lock:
+            if self._running:
+                return
+            self._running = True
+            self._worker_thread = threading.Thread(
+                target=self._poll_loop,
+                name="ExecutionDispatcherWorker",
+                daemon=True
+            )
+            self._worker_thread.start()
+            logger.info("Execution Dispatcher worker thread started.")
 
-    async def notify_target_ready(self, target_id: int) -> None:
-        """
-        In-process fast-path notification channel.
-        
-        Called by Eligibility Engine immediately after creating a READY target.
-        Pushes target ID to the internal async queue for immediate processing.
-        """
-        await self._notification_queue.put(target_id)
-        logger.debug(f"Pushed target ID {target_id} to in-process notification queue.")
+    def stop(self) -> None:
+        """Stops background dispatcher polling loop cleanly."""
+        with self._lock:
+            if not self._running:
+                return
+            self._running = False
 
-    def notify_target_ready_sync(self, target_id: int) -> None:
+        if self._worker_thread and self._worker_thread.is_alive():
+            self._worker_thread.join(timeout=2.0)
+        logger.info("Execution Dispatcher worker thread stopped.")
+
+    def _poll_loop(self) -> None:
+        """Continuous polling loop executing READY target processing."""
+        while self._running:
+            try:
+                self.process_pending_targets()
+            except Exception as loop_err:
+                logger.error(f"Unexpected error in Execution Dispatcher loop: {loop_err}", exc_info=True)
+            
+            time.sleep(self.poll_interval)
+
+    def process_pending_targets(self) -> int:
         """
-        Synchronous wrapper for in-process notification channel.
-        Allows synchronous callers (e.g. background threads or eligibility engine)
-        to enqueue target IDs without an active event loop.
+        Polls for READY target IDs, claims them atomically, and processes via TradeEngine.
+        Returns count of targets processed in this cycle.
         """
         try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(self.notify_target_ready(target_id))
-        except RuntimeError:
-            # Fallback if no loop is running in current thread: target will be picked up by DB poller
-            logger.debug(f"No running event loop for target ID {target_id}; poller fallback will process it.")
+            target_ids = fetch_ready_target_ids(limit=10)
+        except Exception as db_err:
+            logger.error(f"Execution Dispatcher failed to fetch READY targets: {db_err}")
+            return 0
 
-    def process_target(self, target_id: int) -> Optional[Any]:
-        """
-        Orchestrates atomic claim and Trade Engine invocation for a single target ID.
-        
-        Flow:
-          1. Atomically claim target (conditional UPDATE status='READY' -> status='EXECUTING')
-          2. If claim fails (0 rows updated / already claimed): return None
-          3. If claim succeeds: invoke Trade Engine callback with claimed target data
-          
-        Implements Section 5.3, Section 7 (Layer 2 Idempotency), and Section 8 (Transaction Boundaries).
-        
-        Args:
-            target_id (int): Primary key of the execution target.
-            
-        Returns:
-            Optional[Any]: Result of trade_engine_invoker if claimed & invoked, or None if claim failed.
-        """
-        logger.info(f"Execution Dispatcher processing target ID {target_id}...")
-        
-        # 1. Atomic claim via conditional UPDATE (commit immediately in repo)
-        claimed_target = claim_ready_execution_target(target_id)
-        if not claimed_target:
-            logger.warning(f"Target ID {target_id} could not be claimed (already claimed or not READY). Skipping.")
-            return None
+        if not target_ids:
+            return 0
 
-        # 2. Invoke Trade Engine if invoker registered
-        if self._trade_engine_invoker:
-            logger.info(f"Invoking Trade Engine for claimed target ID {target_id}...")
-            return self._trade_engine_invoker(claimed_target)
-        else:
-            logger.warning(f"Target ID {target_id} claimed, but no Trade Engine invoker registered.")
-            return claimed_target
+        logger.info(f"Execution Dispatcher found {len(target_ids)} READY target(s) to process.")
+        processed_count = 0
 
-    def poll_and_process_ready_targets(self, limit: int = 10) -> List[Any]:
-        """
-        Fallback path / Polling worker: Polls PostgreSQL for READY targets and processes them.
-        
-        Implements Section 5.3 DB polling fallback path using FOR UPDATE SKIP LOCKED queries.
-        
-        Args:
-            limit (int): Maximum number of targets to fetch per poll cycle.
-            
-        Returns:
-            List[Any]: List of trade engine invocation results for successfully claimed targets.
-        """
-        ready_ids = fetch_ready_target_ids(limit=limit)
-        if not ready_ids:
-            return []
+        for target_id in target_ids:
+            if not self._running:
+                break
 
-        logger.info(f"Poller discovered {len(ready_ids)} READY target IDs: {ready_ids}")
-        results = []
-        for tid in ready_ids:
-            res = self.process_target(tid)
-            if res is not None:
-                results.append(res)
-        return results
+            # 1. Atomic claim: READY -> EXECUTING
+            claimed_target = claim_ready_execution_target(target_id)
+            if not claimed_target:
+                # Target was claimed by another worker or is no longer READY
+                continue
+
+            # 2. Build default TradeEngine instance for execution
+            trade_engine = self._create_default_trade_engine()
+
+            # 3. Dispatch to TradeEngine pipeline (Stages 4 -> 7)
+            try:
+                logger.info(f"Execution Dispatcher invoking TradeEngine for claimed target ID {target_id}...")
+                trade_engine.execute(claimed_target)
+                processed_count += 1
+            except Exception as exec_err:
+                logger.error(f"Execution Dispatcher error processing target ID {target_id}: {exec_err}", exc_info=True)
+
+        return processed_count
+
+    def _create_default_trade_engine(self) -> TradeEngine:
+        """
+        Constructs a standard TradeEngine instance with production stage dependencies.
+        """
+        from services.execution_context_builder import build_execution_context
+        from services.runtime_validator import validate_runtime_context
+        from services.risk_manager import evaluate_risk
+        from services.quantity_calculator import calculate_order_quantity
+        from services.order_builder import build_order_spec
+        from services.broker_dispatcher import dispatch_order
+        from services.execution_writer import write_execution_result
+
+        return TradeEngine(
+            context_builder=build_execution_context,
+            runtime_validator=validate_runtime_context,
+            risk_manager=evaluate_risk,
+            quantity_calculator=calculate_order_quantity,
+            order_builder=build_order_spec,
+            broker_dispatcher=dispatch_order,
+            execution_writer=write_execution_result
+        )
+
+
+# Singleton instance for application lifecycle management
+global_execution_dispatcher = ExecutionDispatcher()

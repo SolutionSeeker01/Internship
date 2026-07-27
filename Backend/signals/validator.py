@@ -6,14 +6,15 @@ from utils.logger import get_logger
 from signals.schemas import WebhookSignalRequest
 from market_data.lookup import get_market_price, BrokerUnavailableException, InvalidSymbolException
 from database.signal_repository import check_duplicate_signal
+from database.instrument_repository import is_instrument_catalog_empty, find_instrument
+from dev_tools.drm import emit_event
 
 logger = get_logger(__name__)
 
-# Configurable constants
-MAX_LTP_DEVIATION_PCT = 10.0  # 10%
+# Maximum allowable deviation between signal entry price and live market LTP.
+# Signals where abs(entry - LTP) / LTP > 5% are rejected to prevent stale/phantom fills.
+MAX_LTP_DEVIATION_PCT = 5.0
 
-
-from database.instrument_repository import is_instrument_catalog_empty, find_instrument
 
 def validate_signal(signal: WebhookSignalRequest) -> tuple:
     """
@@ -91,26 +92,12 @@ def validate_signal(signal: WebhookSignalRequest) -> tuple:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid stoploss: Stoploss must be strictly below entry price for BUY."
             )
-        sl_dist_pct = ((entry - sl) / entry) * 100.0
-        if sl_dist_pct > 5.0:
-            logger.warning(f"Rejected signal due to validation failure: STOPLOSS_EXCEEDS_MAX_DISTANCE ({sl_dist_pct:.2f}% > 5.0%)")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid stoploss: Stoploss distance ({sl_dist_pct:.2f}%) exceeds maximum allowed threshold of 5.0%."
-            )
     elif action == "SELL":
         if sl <= entry:
             logger.warning("Rejected signal due to validation failure: INVALID_STOPLOSS")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid stoploss: Stoploss must be strictly above entry price for SELL."
-            )
-        sl_dist_pct = ((sl - entry) / entry) * 100.0
-        if sl_dist_pct > 5.0:
-            logger.warning(f"Rejected signal due to validation failure: STOPLOSS_EXCEEDS_MAX_DISTANCE ({sl_dist_pct:.2f}% > 5.0%)")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid stoploss: Stoploss distance ({sl_dist_pct:.2f}%) exceeds maximum allowed threshold of 5.0%."
             )
 
 
@@ -201,4 +188,14 @@ def validate_signal(signal: WebhookSignalRequest) -> tuple:
         )
 
     logger.info(f"Signal {action} {symbol} successfully validated against business rules. Status={validation_status} Reason={validation_reason}")
+    emit_event(
+        event_type="SIGNAL_VALIDATED",
+        component="SIGNAL_VALIDATOR",
+        payload={
+            "symbol": symbol,
+            "action": action,
+            "validation_status": validation_status,
+            "validation_reason": validation_reason
+        }
+    )
     return validation_status, validation_reason

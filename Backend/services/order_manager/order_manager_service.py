@@ -242,9 +242,9 @@ class OrderManagerService:
                     parent_order_id=parent_order.id,
                     broker_order_id=confirmation.broker_order_id,
                     price=spec.price,
-                    status="COMPLETE", # Simulated fill for target execution workflow
-                    filled_quantity=spec.quantity,
-                    average_price=spec.price,
+                    status="PLACED",        # Updated to COMPLETE by broker order update callback on fill
+                    filled_quantity=0,
+                    average_price=None,
                     placed_at=datetime.now(),
                     session=db
                 )
@@ -279,16 +279,183 @@ class OrderManagerService:
                     trade_repository.update_trade(trade.id, status="PARTIALLY_CLOSED", session=db)
                 executed_steps.append("PLACE_SAFETY_SL")
 
+                from dev_tools.drm import global_event_bus, RuntimeEvent
+                global_event_bus.publish(RuntimeEvent(
+                    event_type="SAFETY_SL_PLACED",
+                    component="ORDER_MGR",
+                    trade_id=plan.trade_id,
+                    order_id=confirmation.broker_order_id,
+                    payload={"quantity": spec.quantity, "trigger_price": float(spec.trigger_price or 0), "limit_price": float(spec.price)}
+                ))
+
             elif step.action_type == "CLOSE_TRADE":
                 trade = trade_repository.get_trade_by_execution_target_id(parent_order.execution_target_id, session=db)
                 if trade:
                     trade_repository.update_trade(trade.id, status="CLOSED", closed_at=datetime.now(), session=db)
                 executed_steps.append("CLOSE_TRADE")
 
+                from dev_tools.drm import global_event_bus, RuntimeEvent
+                global_event_bus.publish(RuntimeEvent(
+                    event_type="TRADE_COMPLETED",
+                    component="ORDER_MGR",
+                    trade_id=plan.trade_id,
+                    payload={"status": "CLOSED"}
+                ))
+
         return {
             "expected_next_state": plan.expected_next_position_state,
             "executed_steps": executed_steps
         }
+
+    def process_broker_order_update(self, order_update: Dict[str, Any]) -> None:
+        """
+        Receives a normalized broker order update event and updates the corresponding
+        order row in the database.
+
+        Implements Section 5.15 Subsection 4 (Broker Order Update Handling).
+        Called from the KiteTicker on_order_update callback wired during start_feed().
+
+        State transitions applied per broker-reported status:
+          COMPLETE / FILLED          → status='COMPLETE', fills filled_quantity + average_price
+          CANCELLED / REJECTED       → status='CANCELLED' or 'REJECTED', no fill data
+          OPEN / AMO REQ / PENDING   → status='OPEN' (re-confirm placement, no-op if already PLACED)
+
+        Constraints:
+          - NO business logic or position state evaluation
+          - NO broker API calls
+          - Performs only the DB update implied by the broker event
+        """
+        broker_order_id = str(order_update.get("order_id", ""))
+        broker_status = str(order_update.get("status", "")).upper()
+        filled_qty = int(order_update.get("filled_quantity", 0) or 0)
+        avg_price = order_update.get("average_price") or order_update.get("price")
+
+        if not broker_order_id:
+            logger.warning("OrderManagerService.process_broker_order_update: received update with no order_id — skipping.")
+            return
+
+        # Map broker status string to platform status
+        STATUS_MAP = {
+            "COMPLETE": "COMPLETE",
+            "FILLED": "COMPLETE",
+            "CANCELLED": "CANCELLED",
+            "REJECTED": "REJECTED",
+            "OPEN": "OPEN",
+            "AMO REQ": "PLACED",
+            "PENDING": "PLACED",
+            "TRIGGER PENDING": "PLACED",
+        }
+        platform_status = STATUS_MAP.get(broker_status)
+        if platform_status is None:
+            logger.debug(f"OrderManagerService.process_broker_order_update: unhandled broker status '{broker_status}' for order {broker_order_id} — skipping.")
+            return
+
+        db = self.session_factory() if self.session_factory else None
+        own_session = db is not None
+        if not own_session:
+            from database.db import SessionLocal
+            db = SessionLocal()
+            own_session = True
+
+        try:
+            order = order_repository.get_order_by_broker_order_id(broker_order_id, session=db)
+            if order is None:
+                # This can happen for SL orders placed by OrderManagerService that aren't tracked
+                # via the entry flow. Log at debug level — not an error.
+                logger.debug(f"OrderManagerService.process_broker_order_update: no local order found for broker_order_id={broker_order_id} (status={broker_status}) — skipping.")
+                return
+
+            update_kwargs: Dict[str, Any] = {"status": platform_status}
+            if platform_status == "COMPLETE":
+                update_kwargs["filled_quantity"] = filled_qty
+                if avg_price is not None:
+                    update_kwargs["average_price"] = float(avg_price)
+
+            order_repository.update_order(order.id, session=db, **update_kwargs)
+            db.commit()
+
+            logger.info(
+                f"OrderManagerService: order ID {order.id} (broker_order_id={broker_order_id}) "
+                f"updated to status='{platform_status}' (broker reported: '{broker_status}', "
+                f"filled_qty={filled_qty})."
+            )
+
+            # ── INITIAL SAFETY STOP-LOSS PLACEMENT ────────────────────────────────────
+            # Business Requirement: Immediately after the ENTRY order is confirmed FILLED,
+            # a protective Stop-Loss order MUST be placed at the broker before runtime
+            # tick monitoring begins.
+            if platform_status == "COMPLETE" and getattr(order, "order_role", "") == "ENTRY":
+                try:
+                    logger.info(f"Entry order {order.id} (target {order.execution_target_id}) FILLED. Placing initial protective Safety Stop-Loss...")
+                    trade = trade_repository.get_trade_by_execution_target_id(order.execution_target_id, session=db)
+                    if trade and trade.status in ("OPEN", "PARTIALLY_CLOSED"):
+                        # Check if a live STOPLOSS order already exists to prevent duplicates
+                        existing_sl = order_repository.get_active_sl_order_by_parent_id(order.id, session=db)
+                        if not existing_sl:
+                            from services.order_manager.child_order_builder import build_child_order_specs
+                            effective_filled_qty = filled_qty if filled_qty > 0 else order.quantity
+
+                            specs = build_child_order_specs(
+                                parent_order_id=order.id,
+                                execution_target_id=order.execution_target_id,
+                                filled_quantity=effective_filled_qty,
+                                entry_action=order.action,
+                                symbol=order.symbol,
+                                exchange=order.exchange,
+                                broker=order.broker,
+                                stoploss_price=Decimal(str(trade.sl_intended)),
+                                t1_price=Decimal(str(trade.t1_intended)) if trade.t1_intended else None,
+                                t2_price=Decimal(str(trade.t2_intended)) if trade.t2_intended else None,
+                                t3_price=Decimal(str(trade.t3_intended)) if trade.t3_intended else None
+                            )
+
+                            if specs.stop_loss:
+                                sl_spec = specs.stop_loss
+                                broker_adapter = self.broker_factory.get_broker(order.broker)
+                                sl_confirmation = broker_adapter.place_order(sl_spec, sl_spec.idempotency_key)
+
+                                order_repository.create_order(
+                                    idempotency_key=sl_spec.idempotency_key,
+                                    symbol=sl_spec.symbol,
+                                    exchange=sl_spec.exchange,
+                                    action=sl_spec.action,
+                                    order_type=sl_spec.order_type,
+                                    quantity=sl_spec.quantity,
+                                    broker=sl_spec.broker,
+                                    order_role="STOPLOSS",
+                                    parent_order_id=order.id,
+                                    broker_order_id=sl_confirmation.broker_order_id,
+                                    price=sl_spec.price,
+                                    trigger_price=sl_spec.trigger_price,
+                                    status="OPEN",
+                                    placed_at=datetime.now(),
+                                    session=db
+                                )
+                                db.commit()
+                                logger.info(
+                                    f"Initial protective Safety Stop-Loss placed successfully: "
+                                    f"broker_order_id={sl_confirmation.broker_order_id}, qty={sl_spec.quantity}, "
+                                    f"price={sl_spec.price} for trade {trade.id}."
+                                )
+                except Exception as sl_err:
+                    logger.error(f"Failed to place initial protective Safety Stop-Loss for entry order {order.id}: {sl_err}", exc_info=True)
+
+            from dev_tools.drm import global_event_bus, RuntimeEvent
+            global_event_bus.publish(RuntimeEvent(
+                event_type="BROKER_ORDER_UPDATE",
+                component="ORDER_MGR",
+                trade_id=getattr(order, "execution_target_id", 0),
+                order_id=broker_order_id,
+                payload={"platform_status": platform_status, "broker_status": broker_status, "filled_qty": filled_qty}
+            ))
+
+        except Exception as e:
+            if own_session:
+                db.rollback()
+            logger.error(f"OrderManagerService.process_broker_order_update failed for broker_order_id={broker_order_id}: {e}", exc_info=True)
+        finally:
+            if own_session:
+                db.close()
 
 
 def math_floor(val: Decimal) -> int:
