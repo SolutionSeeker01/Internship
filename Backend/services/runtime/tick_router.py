@@ -48,6 +48,7 @@ class TickRouter:
 
     def process_market_tick(
         self,
+        broker_account_id: Optional[int],
         symbol: str,
         last_price: Any,
         tick_data: Optional[Dict[str, Any]] = None
@@ -59,6 +60,7 @@ class TickRouter:
             - Calls manager.process_market_tick(trade_id=trade_id, current_ltp=current_ltp)
 
         Args:
+            broker_account_id (Optional[int]): Mandatory BrokerAccount primary key ID for client isolation.
             symbol (str): Mandatory trading symbol (e.g. 'RELIANCE', 'SBIN').
             last_price (Any): Mandatory last traded price (Decimal, float, int, or str).
             tick_data (Optional[Dict[str, Any]]): Optional complete tick dictionary payload.
@@ -85,11 +87,24 @@ class TickRouter:
 
         symbol_upper = symbol.strip().upper()
 
-        # 1. Resolve all active trade IDs for this symbol from OrderManagerRegistry
-        trade_ids: List[int] = self.registry.get_active_trade_ids_for_symbol(symbol_upper)
+        # 1. Resolve active trade IDs from OrderManagerRegistry using (broker_account_id, symbol)
+        if isinstance(broker_account_id, int) and broker_account_id > 0:
+            trade_ids: List[int] = self.registry.get_active_trade_ids_for_broker_and_symbol(
+                broker_account_id=broker_account_id,
+                symbol=symbol_upper
+            )
+        else:
+            # Fallback to global symbol index for legacy calls
+            trade_ids = self.registry.get_active_trade_ids_for_symbol(symbol_upper)
+
         if not trade_ids:
-            logger.debug(f"TickRouter: No active trades registered for symbol '{symbol_upper}'.")
-            return {"status": "SKIPPED", "reason": "NO_ACTIVE_TRADES", "symbol": symbol_upper}
+            logger.debug(f"TickRouter: No active trades registered for (BrokerAccount: {broker_account_id}, Symbol: '{symbol_upper}').")
+            return {
+                "status": "SKIPPED",
+                "reason": "NO_ACTIVE_TRADES",
+                "broker_account_id": broker_account_id,
+                "symbol": symbol_upper
+            }
 
         dispatched_count = 0
         failed_count = 0

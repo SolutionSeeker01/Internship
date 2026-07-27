@@ -153,6 +153,8 @@ def get_open_trades(
 def update_trade(
     trade_id: int,
     status: Optional[str] = None,
+    position_state: Optional[str] = None,
+    active_trailing_sl: Optional[Decimal] = None,
     exit_average_price: Optional[Decimal] = None,
     exit_qty: Optional[int] = None,
     pnl_realized: Optional[Decimal] = None,
@@ -178,6 +180,10 @@ def update_trade(
 
         if status is not None:
             trade.status = status
+        if position_state is not None:
+            trade.position_state = position_state
+        if active_trailing_sl is not None:
+            trade.active_trailing_sl = active_trailing_sl
         if exit_average_price is not None:
             trade.exit_average_price = exit_average_price
         if exit_qty is not None:

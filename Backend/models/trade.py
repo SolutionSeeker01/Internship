@@ -46,6 +46,13 @@ class Trade(Base):
     # Position Status: OPEN | PARTIALLY_CLOSED | CLOSED
     status = Column(String(20), nullable=False, default="OPEN", index=True)
 
+    # Position State Machine: BROKER_PROTECTED | SL_CANCEL_PENDING | SOFTWARE_TRAILING_ACTIVE | PARTIALLY_PROTECTED | CLOSED
+    position_state = Column(String(30), nullable=False, default="BROKER_PROTECTED", index=True)
+
+    # Active Software Trailing Stop-Loss Price (Non-null when position_state == SOFTWARE_TRAILING_ACTIVE)
+    active_trailing_sl = Column(Numeric(12, 4), nullable=True)
+
+
     # Trailing Stop One-Way Latch Flag (Section 5.15 v1.5.3)
     trailing_sl_activated = Column(Boolean, nullable=False, default=False)
 

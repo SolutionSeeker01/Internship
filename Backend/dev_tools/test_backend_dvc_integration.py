@@ -67,7 +67,7 @@ def run_real_backend_integration_validation():
         quantity_calculator=lambda budget, sig: mock_qty,
         order_builder=lambda sig, qty, ctx, caps: mock_spec,
         broker_dispatcher=lambda spec: mock_result,
-        execution_writer=lambda res: res
+        execution_writer=lambda res, spec=None: res
     )
 
     # Execute backend trade engine with target dictionary and signal data
@@ -95,7 +95,7 @@ def run_real_backend_integration_validation():
         quantity_calculator=lambda budget, sig: None,
         order_builder=lambda sig, qty, ctx, caps: None,
         broker_dispatcher=lambda spec: None,
-        execution_writer=lambda res: res
+        execution_writer=lambda res, spec=None: res
     )
 
     risk_outcome = risk_reject_engine.execute({"id": 102, "client_id": 1, "signal_id": 2}, signal_data=signal_data)
@@ -120,7 +120,7 @@ def run_real_backend_integration_validation():
         quantity_calculator=lambda budget, sig: ExecutionResult(execution_target_id=103, outcome="RISK_REJECTED", fail_reason="QUANTITY_BELOW_MINIMUM", signal_id=3, client_id=1),
         order_builder=lambda sig, qty, ctx, caps: None,
         broker_dispatcher=lambda spec: None,
-        execution_writer=lambda res: res
+        execution_writer=lambda res, spec=None: res
     )
 
     qty_outcome = qty_reject_engine.execute({"id": 103, "client_id": 1, "signal_id": 3}, signal_data=signal_data)

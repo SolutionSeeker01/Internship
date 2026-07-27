@@ -167,7 +167,7 @@ class BrokerEventRouter:
                     component="BROKER_EVENT_ROUTER",
                     trade_id=trade_id,
                     order_id=broker_order_id,
-                    payload={"result": str(result)}
+                    payload={"result": dispatch_status}
                 ))
             except Exception as dispatch_err:
                 logger.error(f"Error during manager callback dispatch for Trade ID {trade_id}: {dispatch_err}", exc_info=True)

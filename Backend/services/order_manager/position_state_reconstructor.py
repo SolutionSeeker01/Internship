@@ -146,8 +146,11 @@ def reconstruct_position_state(
         resolved_state = "SL_CANCEL_PENDING"
     elif executed_targets or trade_status.upper() == "PARTIALLY_CLOSED":
         resolved_state = "PARTIALLY_PROTECTED"
+    elif trailing_sl_activated and active_sl_id is None:
+        resolved_state = "SOFTWARE_TRAILING_ACTIVE"
     else:
         resolved_state = "PROTECTED"
+
 
     return ReconstructedPositionState(
         trade_id=trade_id,
@@ -160,3 +163,60 @@ def reconstruct_position_state(
         executed_targets=sorted(executed_targets),
         trailing_sl_activated=trailing_sl_activated
     )
+
+
+def get_protection_mode(position_state: str) -> str:
+    """
+    Pure deterministic derivation of protection mode from position_state.
+    Single Source of Truth: position_state column in trades table.
+    
+    Returns:
+        BROKER | TRANSITIONING | SOFTWARE | NONE | UNKNOWN
+    """
+    from services.order_manager.constants import ProtectionMode, PositionState
+    
+    state = str(position_state).upper().strip() if position_state else ""
+    if state in (PositionState.BROKER_PROTECTED, PositionState.PROTECTED):
+        return ProtectionMode.BROKER
+    elif state == PositionState.SL_CANCEL_PENDING:
+        return ProtectionMode.TRANSITIONING
+    elif state in (PositionState.SOFTWARE_TRAILING_ACTIVE, PositionState.PARTIALLY_PROTECTED):
+        return ProtectionMode.SOFTWARE
+    elif state == PositionState.CLOSED:
+        return ProtectionMode.NONE
+    return ProtectionMode.UNKNOWN
+
+
+def validate_position_invariants(
+    position_state: str,
+    active_trailing_sl: Optional[Decimal] = None,
+    active_sl_broker_order_id: Optional[str] = None
+) -> List[str]:
+    """
+    Pure validation helper evaluating architectural invariants for position states.
+    
+    Invariants checked:
+        Invariant 4: If SOFTWARE_TRAILING_ACTIVE, active_sl_broker_order_id must be None.
+        Invariant 7: If SOFTWARE_TRAILING_ACTIVE, active_trailing_sl must be non-null and > 0.
+        
+    Returns:
+        List[str]: List of invariant violation description strings (empty if valid).
+    """
+    from services.order_manager.constants import PositionState
+    
+    violations: List[str] = []
+    state = str(position_state).upper().strip() if position_state else ""
+    
+    if state == PositionState.SOFTWARE_TRAILING_ACTIVE:
+        if active_sl_broker_order_id is not None:
+            violations.append(
+                f"Invariant 4 Violation: Position state is {state} but active broker SL order ID '{active_sl_broker_order_id}' exists."
+            )
+        if active_trailing_sl is None or active_trailing_sl <= Decimal("0"):
+            violations.append(
+                f"Invariant 7 Violation: Position state is {state} but active_trailing_sl is '{active_trailing_sl}' (must be > 0)."
+            )
+            
+    return violations
+
+

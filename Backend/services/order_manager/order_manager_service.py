@@ -25,14 +25,15 @@ from typing import Dict, Any, Optional, List, Tuple
 from database import trade_repository, order_repository
 from models.trade import Trade
 from models.order import Order
-from services.order_manager.position_state_reconstructor import reconstruct_position_state, ReconstructedPositionState
+from services.order_manager.position_state_reconstructor import reconstruct_position_state, ReconstructedPositionState, get_protection_mode
+
 from services.order_manager.target_execution_workflow import plan_target_execution_workflow, WorkflowPlan, WorkflowStep
 from services.order_manager.trailing_stop_engine import (
     is_trailing_stop_activated,
     calculate_trailing_stop_price,
-    should_emit_sl_modification,
     is_trailing_exit_triggered
 )
+
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -113,6 +114,17 @@ class OrderManagerService:
             if state.position_state == "CLOSED":
                 return {"status": "SKIPPED", "reason": "Position state evaluates to CLOSED"}
 
+            # Duplicate Cancellation Guard (Invariant 5): If cancellation is in-flight, suppress duplicate cancel requests
+            if state.position_state == "SL_CANCEL_PENDING" or getattr(trade, "position_state", "") == "SL_CANCEL_PENDING":
+                logger.info(f"Trade ID {trade.id} is in SL_CANCEL_PENDING. Suppressing duplicate broker cancellation.")
+                return {"status": "SL_CANCEL_PENDING", "position_state": "SL_CANCEL_PENDING", "reason": "Cancellation workflow in progress"}
+
+
+            # Duplicate Exit Protection: If exit order is in-flight, suppress duplicate exit attempts
+            if state.position_state == "EXIT_PENDING" or getattr(trade, "position_state", "") == "EXIT_PENDING":
+                logger.info(f"Trade ID {trade.id} is in EXIT_PENDING. Suppressing duplicate software exit order.")
+                return {"status": "EXIT_PENDING", "position_state": "EXIT_PENDING", "reason": "Software exit order already in-flight"}
+
             # Read Strategy Setup Prices
             entry_action = entry_order.action
             entry_price = Decimal(str(trade.entry_filled_price or trade.entry_intended_price))
@@ -135,9 +147,9 @@ class OrderManagerService:
                 t3_price=t3_price
             )
 
-            # 3. Trailing Stop Engine Evaluation (If no TP/Initial SL hit)
+            # 3. Trailing Stop Engine Evaluation (Phase 2, 3 & 4 Integration)
             if not trigger_event and t1_price:
-                # Delegate activation check (one-way latch)
+                # Delegate 70% activation check (one-way latch)
                 activated = is_trailing_stop_activated(
                     entry_action=entry_action,
                     entry_price=entry_price,
@@ -146,14 +158,149 @@ class OrderManagerService:
                     already_activated=trade.trailing_sl_activated
                 )
 
+                # PHASE 2 HANDOVER: Transition from BROKER_PROTECTED -> SL_CANCEL_PENDING -> SOFTWARE_TRAILING_ACTIVE
                 if activated and not trade.trailing_sl_activated:
-                    trade_repository.update_trade(trade.id, trailing_sl_activated=True, session=db)
+                    logger.info(f"Phase 2 Handover Triggered for Trade ID {trade.id}: 70% to TP1 reached at LTP {current_ltp}.")
+                    
+                    # Step 1: Transition state to SL_CANCEL_PENDING
+                    trade_repository.update_trade(trade.id, position_state="SL_CANCEL_PENDING", session=db)
                     if db:
                         db.commit()
 
-                if activated:
-                    # Delegate theoretical trailing SL calculation
-                    new_trailing_sl = calculate_trailing_stop_price(
+                    # Step 2: Issue broker SL cancellation
+                    broker_cancel_confirmed = False
+                    sl_filled_at_broker = False
+
+                    if state.active_sl_broker_order_id:
+                        broker_adapter = self.broker_factory.get_broker(entry_order.broker)
+                        try:
+                            cancel_response = broker_adapter.cancel_order(state.active_sl_broker_order_id)
+                            cancel_status = str(cancel_response.get("status", "")).upper()
+                            
+                            if cancel_status in ("CANCELLED", "SUCCESS"):
+                                broker_cancel_confirmed = True
+                            elif cancel_status in ("FILLED", "COMPLETE"):
+                                sl_filled_at_broker = True
+                            else:
+                                logger.info(f"Broker cancel returned status '{cancel_status}'. Handover remaining SL_CANCEL_PENDING.")
+                        except Exception as cancel_err:
+                            err_msg = str(cancel_err).lower()
+                            if "already cancelled" in err_msg:
+                                broker_cancel_confirmed = True
+                            elif "already executed" in err_msg or "filled" in err_msg:
+                                sl_filled_at_broker = True
+                            else:
+                                logger.warning(f"Broker SL cancel attempt failed for Trade ID {trade.id}: {cancel_err}")
+
+                    # Step 3: Handle Broker Outcomes
+                    if sl_filled_at_broker:
+                        trade_repository.update_trade(trade.id, status="CLOSED", position_state="CLOSED", session=db)
+                        if db and self.session_factory:
+                            db.commit()
+                        logger.info(f"Handover aborted for Trade ID {trade.id}: Initial SL executed at broker.")
+                        return {"status": "SL_FILLED_AT_BROKER", "position_state": "CLOSED"}
+
+                    if broker_cancel_confirmed or not state.active_sl_broker_order_id:
+                        initial_trailing_sl = calculate_trailing_stop_price(
+                            entry_action=entry_action,
+                            original_sl=sl_price,
+                            entry_price=entry_price,
+                            t1_price=t1_price,
+                            current_ltp=current_ltp
+                        )
+
+                        trade_repository.update_trade(
+                            trade.id,
+                            position_state="SOFTWARE_TRAILING_ACTIVE",
+                            active_trailing_sl=initial_trailing_sl,
+                            trailing_sl_activated=True,
+                            session=db
+                        )
+                        if state.active_sl_order_id:
+                            order_repository.update_order(state.active_sl_order_id, status="CANCELLED", session=db)
+                        
+                        if db and self.session_factory:
+                            db.commit()
+
+                        from services.order_manager.position_state_reconstructor import validate_position_invariants
+                        violations = validate_position_invariants(
+                            position_state="SOFTWARE_TRAILING_ACTIVE",
+                            active_trailing_sl=initial_trailing_sl,
+                            active_sl_broker_order_id=None
+                        )
+                        assert len(violations) == 0, f"Invariant Violation during Handover: {violations}"
+
+                        logger.info(f"Handover SUCCESS for Trade ID {trade.id}: SOFTWARE_TRAILING_ACTIVE at SL {initial_trailing_sl}.")
+                        return {
+                            "status": "HANDOVER_COMPLETE",
+                            "position_state": "SOFTWARE_TRAILING_ACTIVE",
+                            "active_trailing_sl": float(initial_trailing_sl)
+                        }
+
+                    return {"status": "SL_CANCEL_PENDING", "position_state": "SL_CANCEL_PENDING"}
+
+                # PHASE 3 & PHASE 4: SOFTWARE TRAILING ENGINE & EXIT EXECUTION
+                current_mode = get_protection_mode(state.position_state)
+                if trade.trailing_sl_activated and current_mode == "SOFTWARE":
+                    active_sl = Decimal(str(trade.active_trailing_sl or sl_price))
+
+                    # PHASE 4: BREACH DETECTION & EXIT EXECUTION
+                    from services.order_manager.trailing_stop_engine import is_trailing_exit_triggered
+                    if is_trailing_exit_triggered(entry_action, active_sl, current_ltp):
+                        logger.info(f"Phase 4 Software SL Breach Triggered for Trade ID {trade.id} at LTP {current_ltp} vs SL {active_sl}.")
+
+                        # Step 1: Immediate State Transition to EXIT_PENDING (Duplicate Exit Protection)
+                        trade_repository.update_trade(trade.id, position_state="EXIT_PENDING", session=db)
+                        if db:
+                            db.commit()
+
+                        # Step 2: Exit Order Placement (5% Execution Buffer)
+                        is_buy = (entry_action.upper() == "BUY")
+                        buffer_pct = Decimal("0.05")
+                        limit_exit_price = active_sl * (Decimal("1") - buffer_pct) if is_buy else active_sl * (Decimal("1") + buffer_pct)
+
+                        plan = plan_target_execution_workflow(
+                            state=state,
+                            trigger_event="TRAILING_SL_HIT",
+                            target_quantity=state.remaining_quantity,
+                            target_price=active_sl,
+                            parent_order_id=entry_order.id,
+                            symbol=entry_order.symbol,
+                            exchange=entry_order.exchange,
+                            broker=entry_order.broker,
+                            entry_action=entry_action,
+                            stoploss_price=active_sl
+                        )
+
+
+                        broker_adapter = self.broker_factory.get_broker(entry_order.broker)
+                        exit_step = [s for s in plan.steps if s.action_type == "PLACE_TARGET_LIMIT"][0]
+
+                        try:
+                            exit_res = broker_adapter.place_order(exit_step.order_spec.to_dict())
+                            order_status = str(exit_res.get("status", "")).upper()
+
+                            if order_status in ("COMPLETE", "FILLED", "SUCCESS"):
+                                trade_repository.update_trade(trade.id, status="CLOSED", position_state="CLOSED", session=db)
+                                if db and self.session_factory:
+                                    db.commit()
+                                return {"status": "SOFTWARE_SL_HIT", "position_state": "CLOSED", "exit_price": float(limit_exit_price)}
+                            elif order_status == "REJECTED":
+                                trade_repository.update_trade(trade.id, position_state="SOFTWARE_TRAILING_ACTIVE", session=db)
+                                if db and self.session_factory:
+                                    db.commit()
+                                return {"status": "EXIT_ORDER_REJECTED", "position_state": "SOFTWARE_TRAILING_ACTIVE"}
+                            else:
+                                return {"status": "EXIT_ORDER_PLACED", "position_state": "EXIT_PENDING"}
+                        except Exception as exit_err:
+                            logger.error(f"Software exit submission failed for Trade ID {trade.id}: {exit_err}")
+                            trade_repository.update_trade(trade.id, position_state="SOFTWARE_TRAILING_ACTIVE", session=db)
+                            if db and self.session_factory:
+                                db.commit()
+                            return {"status": "EXIT_ORDER_REJECTED", "position_state": "SOFTWARE_TRAILING_ACTIVE"}
+
+                    # PHASE 3: Continuous Monotonic Ratchet & DB Persistence
+                    candidate_sl = calculate_trailing_stop_price(
                         entry_action=entry_action,
                         original_sl=sl_price,
                         entry_price=entry_price,
@@ -161,21 +308,50 @@ class OrderManagerService:
                         current_ltp=current_ltp
                     )
 
-                    # Check Trailing Exit Trigger
-                    if is_trailing_exit_triggered(entry_action, state.active_sl_price or new_trailing_sl, current_ltp):
-                        trigger_event = "TRAILING_SL_HIT"
-                        target_qty = state.remaining_quantity
-                        target_price = state.active_sl_price or new_trailing_sl
-                    elif state.active_sl_price and should_emit_sl_modification(entry_action, state.active_sl_price, new_trailing_sl):
-                        # Trailing SL update required -> modify active SL order at broker
-                        broker_adapter = self.broker_factory.get_broker(entry_order.broker)
-                        if state.active_sl_broker_order_id:
-                            broker_adapter.modify_order(state.active_sl_broker_order_id, {"price": new_trailing_sl, "trigger_price": new_trailing_sl})
-                            if state.active_sl_order_id:
-                                order_repository.update_order(state.active_sl_order_id, price=new_trailing_sl, trigger_price=new_trailing_sl, session=db)
-                            if db and self.session_factory:
-                                db.commit()
-                            return {"status": "SL_MODIFIED", "new_sl_price": float(new_trailing_sl)}
+                    from services.order_manager.trailing_stop_engine import update_monotonic_trailing_sl
+                    ratcheted_sl = update_monotonic_trailing_sl(
+                        entry_action=entry_action,
+                        active_trailing_sl=trade.active_trailing_sl,
+                        new_calculated_sl=candidate_sl
+                    )
+
+                    current_active_sl = trade.active_trailing_sl
+                    sl_improved = False
+
+                    if current_active_sl is None:
+                        sl_improved = True
+                    elif entry_action.upper() == "BUY" and ratcheted_sl > current_active_sl:
+                        sl_improved = True
+                    elif entry_action.upper() == "SELL" and ratcheted_sl < current_active_sl:
+                        sl_improved = True
+
+                    if sl_improved:
+                        trade_repository.update_trade(trade.id, active_trailing_sl=ratcheted_sl, session=db)
+                        if db and self.session_factory:
+                            db.commit()
+
+                        from services.order_manager.position_state_reconstructor import validate_position_invariants
+                        violations = validate_position_invariants(
+                            position_state=state.position_state,
+                            active_trailing_sl=ratcheted_sl,
+                            active_sl_broker_order_id=None
+                        )
+                        assert len(violations) == 0, f"Invariant Violation in Phase 3 Engine: {violations}"
+
+                        logger.info(f"Phase 3 Trailing Ratchet UPDATED Trade ID {trade.id}: active_trailing_sl={ratcheted_sl}.")
+                        return {
+                            "status": "SOFTWARE_TRAILING_UPDATED",
+                            "active_trailing_sl": float(ratcheted_sl)
+                        }
+                    else:
+                        return {
+                            "status": "SOFTWARE_TRAILING_UNCHANGED",
+                            "active_trailing_sl": float(current_active_sl)
+                        }
+
+
+
+
 
             # 4. If Trigger Event Occurred -> Generate and Execute WorkflowPlan
             if trigger_event:
@@ -228,7 +404,9 @@ class OrderManagerService:
             elif step.action_type == "PLACE_TARGET_LIMIT" and step.order_spec:
                 spec = step.order_spec
                 confirmation = broker_adapter.place_order(spec, spec.idempotency_key)
-                
+                # Bug Fix (Production Validation): place_order() returns a dict; access safely.
+                confirm_broker_id = confirmation.get("broker_order_id") if isinstance(confirmation, dict) else getattr(confirmation, "broker_order_id", None)
+
                 # Record target order in orders table
                 child_order = order_repository.create_order(
                     idempotency_key=spec.idempotency_key,
@@ -240,7 +418,7 @@ class OrderManagerService:
                     broker=spec.broker,
                     order_role=spec.order_role,
                     parent_order_id=parent_order.id,
-                    broker_order_id=confirmation.broker_order_id,
+                    broker_order_id=confirm_broker_id,
                     price=spec.price,
                     status="PLACED",        # Updated to COMPLETE by broker order update callback on fill
                     filled_quantity=0,
@@ -250,10 +428,18 @@ class OrderManagerService:
                 )
                 executed_steps.append(f"PLACE_TARGET_LIMIT_{spec.order_role}")
 
+                # Update trade status to PARTIALLY_CLOSED for target exits
+                trade = trade_repository.get_trade_by_execution_target_id(parent_order.execution_target_id, session=db)
+                if trade and "TARGET" in spec.order_role:
+                    trade_repository.update_trade(trade.id, status="PARTIALLY_CLOSED", session=db)
+
+
             elif step.action_type == "PLACE_SAFETY_SL" and step.order_spec:
                 spec = step.order_spec
                 confirmation = broker_adapter.place_order(spec, spec.idempotency_key)
-                
+                # Bug Fix (Production Validation): place_order() returns a dict; access safely.
+                confirm_broker_id = confirmation.get("broker_order_id") if isinstance(confirmation, dict) else getattr(confirmation, "broker_order_id", None)
+
                 # Record replacement safety SL order in orders table
                 order_repository.create_order(
                     idempotency_key=spec.idempotency_key,
@@ -265,14 +451,14 @@ class OrderManagerService:
                     broker=spec.broker,
                     order_role=spec.order_role,
                     parent_order_id=parent_order.id,
-                    broker_order_id=confirmation.broker_order_id,
+                    broker_order_id=confirm_broker_id,
                     price=spec.price,
                     trigger_price=spec.trigger_price,
                     status="OPEN",
                     placed_at=datetime.now(),
                     session=db
                 )
-                
+
                 # Update trade status
                 trade = trade_repository.get_trade_by_execution_target_id(parent_order.execution_target_id, session=db)
                 if trade:
@@ -284,7 +470,7 @@ class OrderManagerService:
                     event_type="SAFETY_SL_PLACED",
                     component="ORDER_MGR",
                     trade_id=plan.trade_id,
-                    order_id=confirmation.broker_order_id,
+                    order_id=confirm_broker_id,
                     payload={"quantity": spec.quantity, "trigger_price": float(spec.trigger_price or 0), "limit_price": float(spec.price)}
                 ))
 
@@ -413,6 +599,8 @@ class OrderManagerService:
                                 sl_spec = specs.stop_loss
                                 broker_adapter = self.broker_factory.get_broker(order.broker)
                                 sl_confirmation = broker_adapter.place_order(sl_spec, sl_spec.idempotency_key)
+                                # Bug Fix (Production Validation): place_order() returns a dict; access safely.
+                                sl_broker_order_id = sl_confirmation.get("broker_order_id") if isinstance(sl_confirmation, dict) else getattr(sl_confirmation, "broker_order_id", None)
 
                                 order_repository.create_order(
                                     idempotency_key=sl_spec.idempotency_key,
@@ -424,7 +612,7 @@ class OrderManagerService:
                                     broker=sl_spec.broker,
                                     order_role="STOPLOSS",
                                     parent_order_id=order.id,
-                                    broker_order_id=sl_confirmation.broker_order_id,
+                                    broker_order_id=sl_broker_order_id,
                                     price=sl_spec.price,
                                     trigger_price=sl_spec.trigger_price,
                                     status="OPEN",
@@ -434,7 +622,7 @@ class OrderManagerService:
                                 db.commit()
                                 logger.info(
                                     f"Initial protective Safety Stop-Loss placed successfully: "
-                                    f"broker_order_id={sl_confirmation.broker_order_id}, qty={sl_spec.quantity}, "
+                                    f"broker_order_id={sl_broker_order_id}, qty={sl_spec.quantity}, "
                                     f"price={sl_spec.price} for trade {trade.id}."
                                 )
                 except Exception as sl_err:

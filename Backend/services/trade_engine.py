@@ -162,8 +162,8 @@ class TradeEngine:
                         execution_target_id=target_id,
                         payload={
                             "capital_base": float(getattr(risk_budget, "capital_base", 0)),
-                            "net_value": float(getattr(context.funds, "net_value", 0)) if context and context.funds else 0.0,
-                            "available_cash": float(getattr(context.funds, "available_cash", 0)) if context and context.funds else 0.0,
+                            "net_value": float(getattr(getattr(context, "funds", None), "net_value", 0)),
+                            "available_cash": float(getattr(getattr(context, "funds", None), "available_cash", 0)),
                             "max_risk": float(getattr(risk_budget, "max_loss_rupees", 0))
                         }
                     )

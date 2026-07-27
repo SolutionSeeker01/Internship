@@ -130,45 +130,40 @@ def calculate_trailing_stop_price(
         raise ValueError(f"Invalid entry_action: {entry_action}. Must be BUY or SELL.")
 
 
-def should_emit_sl_modification(
+def update_monotonic_trailing_sl(
     entry_action: str,
-    active_sl_price: Decimal,
-    new_calculated_sl: Decimal,
-    min_step_pct: Decimal = DEFAULT_TRAILING_SL_MIN_STEP_PCT
-) -> bool:
+    active_trailing_sl: Optional[Decimal],
+    new_calculated_sl: Decimal
+) -> Decimal:
     """
-    Evaluates throttling policy per Section 5.15 Subsection 5c (Broker Rate-Limit Compliance):
-      - Throttling controls ONLY when an updated SL is dispatched to the broker.
-      - Emits modification request ONLY IF the newly calculated SL improves over active SL
-        by at least min_step_pct.
-
-    BUY Improvement:  new_calculated_sl >= active_sl_price * (1 + min_step_pct)
-    SELL Improvement: new_calculated_sl <= active_sl_price * (1 - min_step_pct)
+    Enforces Invariant 8: Monotonic Trailing Stop Ratchet for Software Trailing Engine.
+    
+    BUY:  Max(active_trailing_sl, new_calculated_sl) -> Only increases (ratchets up).
+    SELL: Min(active_trailing_sl, new_calculated_sl) -> Only decreases (ratchets down).
 
     Args:
         entry_action (str): BUY or SELL.
-        active_sl_price (Decimal): Currently active broker SL order price.
-        new_calculated_sl (Decimal): Theoretical newly calculated SL.
-        min_step_pct (Decimal): Minimum percentage improvement threshold (default 0.25%).
+        active_trailing_sl (Optional[Decimal]): Currently active persisted trailing SL price.
+        new_calculated_sl (Decimal): Candidate trailing SL price from current tick.
 
     Returns:
-        bool: True if modification request should be dispatched to broker, False if throttled.
+        Decimal: Monotonically ratcheted trailing SL price.
     """
-    active_sl_price = Decimal(str(active_sl_price))
     new_calculated_sl = Decimal(str(new_calculated_sl))
-    min_step_pct = Decimal(str(min_step_pct))
+    if active_trailing_sl is None:
+        return new_calculated_sl
+
+    active_sl = Decimal(str(active_trailing_sl))
     action = entry_action.upper().strip()
 
     if action == "BUY":
-        min_required_sl = active_sl_price * (Decimal("1") + min_step_pct)
-        return new_calculated_sl >= min_required_sl
+        return max(active_sl, new_calculated_sl)
     elif action == "SELL":
-        max_required_sl = active_sl_price * (Decimal("1") - min_step_pct)
-        return new_calculated_sl <= max_required_sl
-    return False
-
-
+        return min(active_sl, new_calculated_sl)
+    else:
+        raise ValueError(f"Invalid entry_action: {entry_action}. Must be BUY or SELL.")
 def is_trailing_exit_triggered(
+
     entry_action: str,
     active_sl_price: Decimal,
     current_ltp: Decimal
@@ -191,7 +186,8 @@ def is_trailing_exit_triggered(
     action = entry_action.upper().strip()
 
     if action == "BUY":
-        return current_ltp < active_sl_price
+        return current_ltp <= active_sl_price
     elif action == "SELL":
-        return current_ltp > active_sl_price
+        return current_ltp >= active_sl_price
     return False
+

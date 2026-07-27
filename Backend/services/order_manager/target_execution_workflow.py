@@ -179,8 +179,9 @@ def plan_target_execution_workflow(
             rejection_reason="Trade is already CLOSED or remaining quantity is 0."
         )
 
-    # Rejection Check 2: In-flight workflow lock (state is transition pending)
-    if state.position_state in ("SL_CANCEL_PENDING", "TARGET_ORDER_PENDING"):
+    # Rejection Check 2: In-flight workflow lock (Invariant 5: state is transition pending)
+    if state.position_state in ("SL_CANCEL_PENDING", "TARGET_ORDER_PENDING", "EXIT_PENDING"):
+
         return WorkflowPlan(
             trade_id=state.trade_id,
             trigger_event=event,
@@ -288,34 +289,37 @@ def plan_target_execution_workflow(
 
     # Step 3: Handle Post-Fill Safety Order or Trade Closure
     if new_remaining_qty > 0:
-        sl_idempotency_key = hashlib.sha256(f"{parent_order_id}:STOPLOSS_REPLACEMENT_{new_remaining_qty}".encode("utf-8")).hexdigest()
-        replacement_sl_spec = ChildOrderSpec(
-            parent_order_id=parent_order_id,
-            execution_target_id=state.execution_target_id,
-            order_role="STOPLOSS",
-            symbol=symbol,
-            exchange=exchange,
-            action=exit_action,
-            quantity=new_remaining_qty,
-            order_type="LIMIT",
-            price=limit_sl_price,            # 5% threshold applied for guaranteed fill
-            trigger_price=stoploss_price,    # trigger stays at actual SL price
-            idempotency_key=sl_idempotency_key,
-            broker=broker
-        )
+        # Phase 5 Requirement: If trailing SL is software-managed, DO NOT place broker safety SL orders (Invariant 4)
+        if not getattr(state, "trailing_sl_activated", False):
+            sl_idempotency_key = hashlib.sha256(f"{parent_order_id}:STOPLOSS_REPLACEMENT_{new_remaining_qty}".encode("utf-8")).hexdigest()
+            replacement_sl_spec = ChildOrderSpec(
+                parent_order_id=parent_order_id,
+                execution_target_id=state.execution_target_id,
+                order_role="STOPLOSS",
+                symbol=symbol,
+                exchange=exchange,
+                action=exit_action,
+                quantity=new_remaining_qty,
+                order_type="LIMIT",
+                price=limit_sl_price,            # 5% threshold applied for guaranteed fill
+                trigger_price=stoploss_price,    # trigger stays at actual SL price
+                idempotency_key=sl_idempotency_key,
+                broker=broker
+            )
 
-        steps.append(WorkflowStep(
-            step_number=step_counter,
-            action_type="PLACE_SAFETY_SL",
-            target_role="STOPLOSS",
-            target_quantity=new_remaining_qty,
-            target_price=stoploss_price,
-            cancel_order_id=None,
-            cancel_broker_order_id=None,
-            order_spec=replacement_sl_spec
-        ))
+            steps.append(WorkflowStep(
+                step_number=step_counter,
+                action_type="PLACE_SAFETY_SL",
+                target_role="STOPLOSS",
+                target_quantity=new_remaining_qty,
+                target_price=stoploss_price,
+                cancel_order_id=None,
+                cancel_broker_order_id=None,
+                order_spec=replacement_sl_spec
+            ))
         expected_next_state = "PARTIALLY_PROTECTED"
     else:
+
         steps.append(WorkflowStep(
             step_number=step_counter,
             action_type="CLOSE_TRADE",

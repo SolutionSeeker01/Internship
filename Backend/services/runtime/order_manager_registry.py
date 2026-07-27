@@ -22,7 +22,7 @@ Constraints:
 """
 
 import threading
-from typing import Dict, Set, Optional, List, TYPE_CHECKING
+from typing import Dict, Set, Optional, List, Tuple, Any, TYPE_CHECKING
 from exceptions import ValidationException
 from utils.logger import get_logger
 
@@ -49,17 +49,21 @@ class OrderManagerRegistry:
         """
         self._lock = threading.RLock()
         
-        # Primary map: trade_id -> (manager_instance, symbol)
+        # Primary map: trade_id -> (manager_instance, symbol, broker_account_id)
         self._trade_map: Dict[int, Dict[str, Any]] = {}
         
-        # Reverse index: symbol -> Set of active trade_ids
+        # Scoped index: (broker_account_id, symbol) -> Set of active trade_ids
+        self._scoped_index: Dict[Tuple[int, str], Set[int]] = {}
+
+        # Reverse index: symbol -> Set of active trade_ids (backwards compatibility)
         self._symbol_index: Dict[str, Set[int]] = {}
 
     def register_trade(
         self,
         trade_id: int,
         symbol: str,
-        manager_instance: "OrderManagerService"
+        manager_instance: "OrderManagerService",
+        broker_account_id: Optional[int] = None
     ) -> None:
         """
         Registers an active trade and its OrderManagerService instance in the registry.
@@ -68,6 +72,7 @@ class OrderManagerRegistry:
             trade_id (int): Primary key ID of the trade.
             symbol (str): Trading symbol (e.g. 'RELIANCE', 'SBIN').
             manager_instance (OrderManagerService): Instantiated OrderManagerService instance.
+            broker_account_id (Optional[int]): BrokerAccount primary key ID for client-scoped tick routing.
 
         Raises:
             ValueError: If inputs are invalid (e.g. trade_id <= 0, empty symbol, missing manager).
@@ -81,6 +86,7 @@ class OrderManagerRegistry:
             raise ValueError("manager_instance is required and cannot be None.")
 
         symbol_upper = symbol.strip().upper()
+        b_acc_id = broker_account_id if (isinstance(broker_account_id, int) and broker_account_id > 0) else None
 
         with self._lock:
             if trade_id in self._trade_map:
@@ -89,22 +95,29 @@ class OrderManagerRegistry:
                     f"Trade ID {trade_id} is already registered in OrderManagerRegistry."
                 )
 
-            # 1. Register in primary trade map (minimal state: manager, symbol)
+            # 1. Register in primary trade map
             self._trade_map[trade_id] = {
                 "manager": manager_instance,
-                "symbol": symbol_upper
+                "symbol": symbol_upper,
+                "broker_account_id": b_acc_id
             }
 
-            # 2. Add to reverse symbol index
+            # 2. Add to reverse index (scoped by (broker_account_id, symbol) and global symbol)
+            if b_acc_id is not None:
+                scoped_key = (b_acc_id, symbol_upper)
+                if scoped_key not in self._scoped_index:
+                    self._scoped_index[scoped_key] = set()
+                self._scoped_index[scoped_key].add(trade_id)
+
             if symbol_upper not in self._symbol_index:
                 self._symbol_index[symbol_upper] = set()
             self._symbol_index[symbol_upper].add(trade_id)
 
-            logger.debug(f"Registered Trade ID {trade_id} (Symbol: '{symbol_upper}') in OrderManagerRegistry.")
+            logger.debug(f"Registered Trade ID {trade_id} (BrokerAccount: {b_acc_id}, Symbol: '{symbol_upper}') in OrderManagerRegistry.")
 
     def unregister_trade(self, trade_id: int) -> bool:
         """
-        Unregisters an active trade and cleans up its symbol index entry upon trade closure.
+        Unregisters an active trade and cleans up its index entries upon trade closure.
 
         Args:
             trade_id (int): Primary key ID of the trade to unregister.
@@ -119,15 +132,22 @@ class OrderManagerRegistry:
 
             trade_entry = self._trade_map.pop(trade_id)
             symbol_upper = trade_entry["symbol"]
+            b_acc_id = trade_entry.get("broker_account_id")
 
-            # Clean up reverse symbol index
+            # Clean up reverse index
+            if b_acc_id is not None:
+                scoped_key = (b_acc_id, symbol_upper)
+                if scoped_key in self._scoped_index:
+                    self._scoped_index[scoped_key].discard(trade_id)
+                    if not self._scoped_index[scoped_key]:
+                        del self._scoped_index[scoped_key]
+
             if symbol_upper in self._symbol_index:
                 self._symbol_index[symbol_upper].discard(trade_id)
-                # Automatically prune symbol key if no active trades remain for this symbol
                 if not self._symbol_index[symbol_upper]:
                     del self._symbol_index[symbol_upper]
 
-            logger.debug(f"Unregistered Trade ID {trade_id} (Symbol: '{symbol_upper}') from OrderManagerRegistry.")
+            logger.debug(f"Unregistered Trade ID {trade_id} (BrokerAccount: {b_acc_id}, Symbol: '{symbol_upper}') from OrderManagerRegistry.")
             return True
 
     def get_manager_by_trade_id(self, trade_id: int) -> Optional["OrderManagerService"]:
@@ -143,6 +163,45 @@ class OrderManagerRegistry:
         with self._lock:
             entry = self._trade_map.get(trade_id)
             return entry["manager"] if entry else None
+
+    def get_trade_info(self, trade_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Retrieves registration metadata (symbol, broker_account_id, manager) for an active trade in O(1) time.
+
+        Args:
+            trade_id (int): Primary key ID of the trade.
+
+        Returns:
+            Optional[Dict[str, Any]]: Copy of trade registration info dict, or None if not registered.
+        """
+        with self._lock:
+            entry = self._trade_map.get(trade_id)
+            return dict(entry) if entry else None
+
+    def get_active_trade_ids_for_broker_and_symbol(
+        self,
+        broker_account_id: int,
+        symbol: str
+    ) -> List[int]:
+        """
+        Resolves a list of active trade IDs matching (broker_account_id, symbol) in O(1) time.
+
+        Args:
+            broker_account_id (int): Primary key ID of the BrokerAccount.
+            symbol (str): Trading symbol.
+
+        Returns:
+            List[int]: Snapshot list of active trade IDs matching the scoped key.
+        """
+        if not isinstance(broker_account_id, int) or broker_account_id <= 0 or not symbol or not isinstance(symbol, str):
+            return []
+
+        symbol_upper = symbol.strip().upper()
+        scoped_key = (broker_account_id, symbol_upper)
+
+        with self._lock:
+            trade_ids = self._scoped_index.get(scoped_key, set())
+            return list(trade_ids)
 
     def get_active_trade_ids_for_symbol(self, symbol: str) -> List[int]:
         """
@@ -197,5 +256,6 @@ class OrderManagerRegistry:
         """
         with self._lock:
             self._trade_map.clear()
+            self._scoped_index.clear()
             self._symbol_index.clear()
             logger.debug("OrderManagerRegistry cleared completely.")
