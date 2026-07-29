@@ -465,23 +465,57 @@ class ZerodhaBroker(BaseBroker):
             quantity = getattr(order_spec, "quantity", 1)
             order_type = getattr(order_spec, "order_type", "MARKET")
             product = getattr(order_spec, "product", "MIS")
-            price = float(getattr(order_spec, "price", 0.0)) if getattr(order_spec, "price", None) else None
-            trigger_price = float(getattr(order_spec, "trigger_price", 0.0)) if getattr(order_spec, "trigger_price", None) else None
+            from utils.tick_size import normalize_tick_size
 
-            # Map transaction type
-            trans_type = kite.TRANSACTION_TYPE_BUY if action == "BUY" else kite.TRANSACTION_TYPE_SELL
+            raw_price = getattr(order_spec, "price", None)
+            raw_trigger = getattr(order_spec, "trigger_price", None)
             
-            # Map order type
-            ord_type = kite.ORDER_TYPE_MARKET
-            if order_type == "LIMIT":
-                ord_type = kite.ORDER_TYPE_LIMIT
-            elif order_type == "SL":
-                ord_type = kite.ORDER_TYPE_SL
-            elif order_type == "SL_MARKET":
-                ord_type = kite.ORDER_TYPE_SLM
+            price = float(normalize_tick_size(raw_price)) if raw_price is not None else None
+            trigger_price = float(normalize_tick_size(raw_trigger)) if raw_trigger is not None else None
 
-            # Map product
-            prod_type = kite.PRODUCT_MIS if product in ("MIS", "INTRADAY") else kite.PRODUCT_CNC
+            # Map transaction type with strict validation
+            action_upper = str(action).strip().upper()
+            if action_upper == "BUY":
+                trans_type = kite.TRANSACTION_TYPE_BUY
+            elif action_upper == "SELL":
+                trans_type = kite.TRANSACTION_TYPE_SELL
+            else:
+                raise BrokerAdapterException(f"Invalid transaction action: '{action}'. Action must be 'BUY' or 'SELL'.")
+            
+            # Map order type with strict validation
+            ord_type_str = str(order_type).strip().upper()
+            if ord_type_str == "MARKET":
+                ord_type = kite.ORDER_TYPE_MARKET
+            elif ord_type_str in ("LIMIT", "LIMIT_ORDER"):
+                ord_type = kite.ORDER_TYPE_LIMIT
+            elif ord_type_str in ("SL", "STOPLOSS"):
+                ord_type = kite.ORDER_TYPE_SL
+            elif ord_type_str in ("SL_MARKET", "SL-M", "SLM"):
+                ord_type = kite.ORDER_TYPE_SLM
+            else:
+                raise BrokerAdapterException(f"Unsupported order type: '{order_type}'. Must be MARKET, LIMIT, SL, or SL_MARKET.")
+
+            # Map product with explicit error handling for invalid/unsupported types
+            prod_str = str(product).strip().upper()
+            if prod_str in ("MIS", "INTRADAY"):
+                prod_type = kite.PRODUCT_MIS
+            elif prod_str in ("CNC", "DELIVERY"):
+                prod_type = kite.PRODUCT_CNC
+            elif prod_str in ("NRML", "MARGIN"):
+                prod_type = kite.PRODUCT_NRML
+            else:
+                raise BrokerAdapterException(f"Unsupported broker product type: '{product}'. Must be MIS/INTRADAY, CNC/DELIVERY, or NRML/MARGIN.")
+
+            validity = getattr(order_spec, "validity", "DAY")
+            val_str = str(validity).strip().upper()
+            if val_str == "DAY":
+                val_type = kite.VALIDITY_DAY
+            elif val_str == "IOC":
+                val_type = kite.VALIDITY_IOC
+            elif val_str == "TTL":
+                val_type = kite.VALIDITY_TTL
+            else:
+                raise BrokerAdapterException(f"Unsupported order validity: '{validity}'. Must be DAY, IOC, or TTL.")
 
             order_id = kite.place_order(
                 variety=kite.VARIETY_REGULAR,
@@ -493,6 +527,7 @@ class ZerodhaBroker(BaseBroker):
                 order_type=ord_type,
                 price=price,
                 trigger_price=trigger_price,
+                validity=val_type,
                 tag=idempotency_key[:20] if idempotency_key else None
             )
 

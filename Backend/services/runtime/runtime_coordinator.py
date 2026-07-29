@@ -31,6 +31,13 @@ from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+_global_runtime_coordinator: Optional["RuntimeCoordinator"] = None
+
+
+def get_runtime_coordinator() -> Optional["RuntimeCoordinator"]:
+    """Returns the active global RuntimeCoordinator instance, if initialized."""
+    return _global_runtime_coordinator
+
 
 class RuntimeCoordinatorException(Exception):
     """Base exception for RuntimeCoordinator failures."""
@@ -122,6 +129,8 @@ class RuntimeCoordinator:
             self.tick_router = TickRouter(registry=self.registry)
 
             self._is_initialized = True
+            global _global_runtime_coordinator
+            _global_runtime_coordinator = self
             logger.info("Phase 1: RuntimeCoordinator infrastructure initialized successfully.")
 
         except Exception as e:
@@ -196,6 +205,11 @@ class RuntimeCoordinator:
 
         if not symbol or not isinstance(symbol, str):
             raise ValueError("symbol must be a non-empty string.")
+
+        # Idempotency check: Return existing manager if trade is already registered
+        if self.registry.get_trade_info(trade_id):
+            logger.info(f"Trade ID {trade_id} is already registered in OrderManagerRegistry. Idempotent return.")
+            return self.registry.get_manager_by_trade_id(trade_id)
 
         symbol_upper = symbol.strip().upper()
         if manager_instance is None:

@@ -141,6 +141,52 @@ def record_execution_result(
             if inserted_order_row:
                 logger.info(f"Execution Writer persisted entry order ID {inserted_order_row[0]} for target ID {target_id}.")
 
+            # Step 3: Create Trade record and register with RuntimeCoordinator for live tick monitoring & trailing SL
+            try:
+                from decimal import Decimal
+                from database import trade_repository
+                trade = trade_repository.get_trade_by_execution_target_id(target_id, session=db)
+                if not trade:
+                    sql_sig = text("""
+                        SELECT s.entry, s.stoploss, s.t1, s.t2, s.t3
+                        FROM signals s
+                        JOIN signal_execution_targets set_target ON set_target.signal_id = s.id
+                        WHERE set_target.id = :target_id;
+                    """)
+                    sig_row = db.execute(sql_sig, {"target_id": target_id}).fetchone()
+                    if sig_row:
+                        trade = trade_repository.create_trade(
+                            execution_target_id=target_id,
+                            entry_intended_price=Decimal(str(sig_row[0])),
+                            sl_intended=Decimal(str(sig_row[1])),
+                            t1_intended=Decimal(str(sig_row[2])) if sig_row[2] is not None else None,
+                            t2_intended=Decimal(str(sig_row[3])) if sig_row[3] is not None else None,
+                            t3_intended=Decimal(str(sig_row[4])) if sig_row[4] is not None else None,
+                            status="OPEN",
+                            session=db
+                        )
+
+                sql_client = text("""
+                    SELECT set_target.client_id, ba.id AS broker_account_id
+                    FROM signal_execution_targets set_target
+                    LEFT JOIN broker_accounts ba ON ba.user_id = set_target.client_id
+                    WHERE set_target.id = :target_id;
+                """)
+                client_row = db.execute(sql_client, {"target_id": target_id}).fetchone()
+                broker_account_id = client_row[1] if client_row and client_row[1] else None
+
+                if trade and broker_account_id:
+                    from services.runtime.runtime_coordinator import get_runtime_coordinator
+                    coordinator = get_runtime_coordinator()
+                    if coordinator and coordinator._is_initialized:
+                        coordinator.register_and_start_trade(
+                            trade_id=trade.id,
+                            symbol=symbol,
+                            broker_account_id=broker_account_id
+                        )
+            except Exception as trade_reg_err:
+                logger.error(f"Execution Writer encountered error creating/registering trade for target ID {target_id}: {trade_reg_err}", exc_info=True)
+
         if own_session:
             db.commit()
         return True

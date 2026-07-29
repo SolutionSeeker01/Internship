@@ -282,13 +282,17 @@ class StartupRecoveryService:
 
         # 4. Resolve BrokerAccount ID via client_id for Phase 3 feed recovery & scoped registry
         from models.broker_account import BrokerAccount
+        from models.execution_target import ExecutionTarget
         broker_account_id = None
+        
         client_id = getattr(entry_order, "client_id", None)
-        if client_id is None:
-            # Fallback to execution target if available
-            target = getattr(trade, "execution_target", None)
-            if target:
-                client_id = target.client_id
+        if not client_id:
+            try:
+                target = session.query(ExecutionTarget).filter(ExecutionTarget.id == trade.execution_target_id).first()
+                if target:
+                    client_id = target.client_id
+            except Exception:
+                client_id = None
 
         if client_id:
             try:

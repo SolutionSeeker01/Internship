@@ -98,10 +98,30 @@ class ExecutionDispatcher:
             if not self._running:
                 break
 
-            # 1. Atomic claim: READY -> EXECUTING
+            # 1. Atomic claim check (fetch_ready_target_ids already transitioned status to EXECUTING)
             claimed_target = claim_ready_execution_target(target_id)
             if not claimed_target:
-                # Target was claimed by another worker or is no longer READY
+                # If target was batch-claimed in fetch_ready_target_ids, retrieve its target record directly
+                from database.db import SessionLocal
+                from sqlalchemy.sql import text
+                db_sess = SessionLocal()
+                try:
+                    row = db_sess.execute(
+                        text("SELECT id, signal_id, client_id, status, claimed_at FROM signal_execution_targets WHERE id = :id AND status = 'EXECUTING'"),
+                        {"id": target_id}
+                    ).fetchone()
+                    if row:
+                        claimed_target = {
+                            "id": row[0],
+                            "signal_id": row[1],
+                            "client_id": row[2],
+                            "status": row[3],
+                            "claimed_at": row[4]
+                        }
+                finally:
+                    db_sess.close()
+
+            if not claimed_target:
                 continue
 
             # 2. Build default TradeEngine instance for execution

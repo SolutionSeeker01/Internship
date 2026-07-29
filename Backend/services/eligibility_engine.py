@@ -59,14 +59,12 @@ def run_eligibility_engine(signal_id: int, strategy_id: int) -> Dict[str, int]:
     for client in candidates:
         client_id = client["client_id"]
         
-        # Classification evaluation flow:
+        # Classification evaluation flow (headless execution independent of UI dashboard session):
+        token = str(client.get("access_token") or "").strip()
         if not client.get("broker_exists"):
             status = STATUS_SKIPPED
             skip_reason = SKIP_BROKER_NOT_CONFIGURED
-        elif not client.get("is_connected"):
-            status = STATUS_SKIPPED
-            skip_reason = SKIP_BROKER_DISCONNECTED
-        elif not client.get("access_token"):
+        elif not token:
             status = STATUS_SKIPPED
             skip_reason = SKIP_ACCESS_TOKEN_MISSING
         else:

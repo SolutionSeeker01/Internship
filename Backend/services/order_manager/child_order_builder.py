@@ -168,6 +168,15 @@ def build_child_order_specs(
         )
 
     # 4. STOPLOSS Spec (Covers total filled quantity Q upon entry fill)
+    # Apply 5% execution buffer between trigger_price and limit price for guaranteed broker execution
+    # For SELL exit (exiting BUY entry): limit_price is 5% below SL trigger_price
+    # For BUY exit (exiting SELL entry): limit_price is 5% above SL trigger_price
+    from utils.tick_size import normalize_tick_size
+    buffer_pct = Decimal("0.05")
+    is_sell_exit = (exit_action.upper() == "SELL")
+    raw_limit_sl = stoploss_price * (Decimal("1") - buffer_pct) if is_sell_exit else stoploss_price * (Decimal("1") + buffer_pct)
+    limit_sl_price = normalize_tick_size(raw_limit_sl)
+
     sl_spec = ChildOrderSpec(
         parent_order_id=parent_order_id,
         execution_target_id=execution_target_id,
@@ -177,7 +186,7 @@ def build_child_order_specs(
         action=exit_action,
         quantity=filled_quantity,
         order_type="LIMIT",
-        price=stoploss_price,
+        price=limit_sl_price,
         trigger_price=stoploss_price,
         idempotency_key=generate_child_idempotency_key(parent_order_id, "STOPLOSS"),
         broker=broker

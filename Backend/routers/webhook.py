@@ -87,17 +87,21 @@ async def webhook_ingest(payload: WebhookSignalRequest) -> dict:
             strategy_id=payload.strategy_id,
         )
 
-        # 5. Run the target eligibility engine for the validated signal (only if a strategy is linked)
-        # The signal is already committed at this point. Eligibility generation is a downstream
-        # infrastructure concern. Failures here must not enter the rejection persistence path,
-        # which would create a second signal row for the same webhook request.
+        # 5. Run the target eligibility engine for fully VALIDATED signals (only if a strategy is linked)
+        # PARTIAL signals (e.g. LTP unavailable) are persisted for audit record but skipped from automatic execution.
         if payload.strategy_id is not None:
-            try:
-                run_eligibility_engine(signal_id=signal_id, strategy_id=payload.strategy_id)
-            except Exception as engine_err:
-                logger.error(
-                    f"Eligibility engine failed for Signal ID {signal_id} "
-                    f"(strategy_id={payload.strategy_id}): {engine_err}"
+            if val_status == "VALIDATED":
+                try:
+                    run_eligibility_engine(signal_id=signal_id, strategy_id=payload.strategy_id)
+                except Exception as engine_err:
+                    logger.error(
+                        f"Eligibility engine failed for Signal ID {signal_id} "
+                        f"(strategy_id={payload.strategy_id}): {engine_err}"
+                    )
+            else:
+                logger.warning(
+                    f"Signal ID {signal_id} skipped automatic execution because validation status is '{val_status}' "
+                    f"(reason: '{val_reason}')."
                 )
 
     except HTTPException as http_ex:

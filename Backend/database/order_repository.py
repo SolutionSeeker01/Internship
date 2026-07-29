@@ -213,6 +213,30 @@ def get_child_orders_by_parent_id(
             db.close()
 
 
+def get_active_sl_order_by_parent_id(
+    parent_order_id: int,
+    session: Optional[Session] = None
+) -> Optional[Order]:
+    """
+    Retrieves active STOPLOSS child leg Order record referencing a parent entry order.
+    """
+    own_session = False
+    db = session
+    if db is None:
+        db = SessionLocal()
+        own_session = True
+
+    try:
+        return db.query(Order).filter(
+            Order.parent_order_id == parent_order_id,
+            Order.order_role == "STOPLOSS",
+            Order.status.in_(["PLACED", "SUBMITTED", "PENDING", "TRIGGERED"])
+        ).first()
+    finally:
+        if own_session:
+            db.close()
+
+
 def get_orders_by_status(
     statuses: List[str],
     session: Optional[Session] = None

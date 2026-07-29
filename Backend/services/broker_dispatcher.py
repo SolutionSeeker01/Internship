@@ -80,9 +80,18 @@ def dispatch_order(
       - NO rate limiting (owned by adapter)
       - NO payload mutation or trading risk decisions
     """
-    target_id = getattr(context, "execution_target_id", 0) if context else 0
-    signal_id = getattr(context, "signal_id", 0) if context else 0
-    client_id = getattr(context, "client_id", 0) if context else 0
+    target_id = 0
+    signal_id = 0
+    client_id = 0
+    if context:
+        if hasattr(context, "target") and isinstance(context.target, dict):
+            target_id = context.target.get("id", 0)
+            signal_id = context.target.get("signal_id", 0)
+            client_id = context.target.get("client_id", 0)
+        else:
+            target_id = getattr(context, "execution_target_id", 0)
+            signal_id = getattr(context, "signal_id", 0)
+            client_id = getattr(context, "client_id", 0)
 
     idempotency_key = getattr(order_spec, "idempotency_key", "")
 
@@ -90,21 +99,32 @@ def dispatch_order(
     broker_adapter = broker_adapter_override
     if not broker_adapter and context:
         broker_name = getattr(context, "broker", "ZERODHA")
-        try:
-            broker_adapter = BrokerFactory.get_broker(broker_name)
-        except Exception as err:
-            logger.error(f"Broker Dispatcher failed to resolve broker adapter '{broker_name}': {err}")
-            return ExecutionResult(
-                execution_target_id=target_id,
-                signal_id=signal_id,
-                client_id=client_id,
-                outcome="BROKER_FAILED",
-                fail_reason="BROKER_UNAVAILABLE",
-                fail_category="PERMANENT",
-                retryable=False,
-                idempotency_key=idempotency_key,
-                executed_at=datetime.now()
-            )
+        
+        if client_id:
+            from database.db import SessionLocal
+            from models.broker_account import BrokerAccount
+            from security.encryption import decrypt_value
+            db = SessionLocal()
+            try:
+                acc = db.query(BrokerAccount).filter(BrokerAccount.user_id == client_id).first()
+                if acc:
+                    api_key = decrypt_value(acc.api_key) if acc.api_key else ""
+                    access_token = decrypt_value(acc.access_token) if acc.access_token else ""
+                    broker_adapter = BrokerFactory.get_broker(
+                        acc.broker or broker_name,
+                        api_key=api_key,
+                        access_token=access_token
+                    )
+            except Exception as err:
+                logger.error(f"Broker Dispatcher failed resolving credentials for client {client_id}: {err}")
+            finally:
+                db.close()
+
+        if not broker_adapter:
+            try:
+                broker_adapter = BrokerFactory.get_broker(broker_name)
+            except Exception as err:
+                logger.error(f"Broker Dispatcher failed to resolve fallback broker adapter '{broker_name}': {err}")
 
     if not broker_adapter:
         logger.error(f"Broker Dispatcher received no usable broker adapter for target ID {target_id}.")

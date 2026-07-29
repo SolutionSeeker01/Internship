@@ -38,8 +38,8 @@ def get_eligible_candidates(strategy_id: int) -> List[Dict[str, Any]]:
             SELECT 
                 csp.client_id,
                 (ba.id IS NOT NULL) AS broker_exists,
-                COALESCE(ba.is_connected, FALSE) AS is_connected,
-                ba.access_token
+                (ba.access_token IS NOT NULL AND TRIM(ba.access_token) != '') AS is_connected,
+                TRIM(ba.access_token) AS access_token
             FROM client_strategy_preferences csp
             INNER JOIN strategies s
               ON s.id = csp.strategy_id
@@ -54,11 +54,12 @@ def get_eligible_candidates(strategy_id: int) -> List[Dict[str, Any]]:
         
         candidates = []
         for row in rows:
+            token = row[3].strip() if row[3] else None
             candidates.append({
                 "client_id": row[0],
                 "broker_exists": bool(row[1]),
-                "is_connected": bool(row[2]),
-                "access_token": row[3]
+                "is_connected": bool(token),
+                "access_token": token
             })
         return candidates
     except SQLAlchemyError as e:
@@ -184,26 +185,33 @@ def claim_ready_execution_target(target_id: int) -> Optional[Dict[str, Any]]:
 
 def fetch_ready_target_ids(limit: int = 10) -> List[int]:
     """
-    Polls the database for READY execution target IDs using FOR UPDATE SKIP LOCKED.
-    
-    Implements Section 5.3 (Execution Dispatcher fallback path & concurrency safety)
-    and Section 8 (Transaction Boundaries). Safe for multi-worker deployments.
+    Polls the database for READY execution target IDs using FOR UPDATE SKIP LOCKED,
+    and atomically transitions claimed targets to EXECUTING within the locked transaction
+    to preserve row lock intentions across multi-worker deployments.
     
     Args:
         limit (int): Maximum number of READY target IDs to fetch.
         
     Returns:
-        List[int]: List of target IDs in READY status.
+        List[int]: List of target IDs successfully fetched and claimed.
     """
     session = SessionLocal()
     try:
         sql = """
-            SELECT id 
-            FROM signal_execution_targets
-            WHERE status = 'READY'
-            ORDER BY id ASC
-            LIMIT :limit
-            FOR UPDATE SKIP LOCKED;
+            WITH target_batch AS (
+                SELECT id 
+                FROM signal_execution_targets
+                WHERE status = 'READY'
+                ORDER BY id ASC
+                LIMIT :limit
+                FOR UPDATE SKIP LOCKED
+            )
+            UPDATE signal_execution_targets set_target
+            SET status = 'EXECUTING',
+                claimed_at = NOW()
+            FROM target_batch
+            WHERE set_target.id = target_batch.id
+            RETURNING set_target.id;
         """
         result = session.execute(text(sql), {"limit": limit})
         rows = result.fetchall()

@@ -108,9 +108,9 @@ class BrokerEventRouter:
             logger.warning("BrokerEventRouter received an empty or non-dict event payload.")
             return {"status": "SKIPPED", "reason": "EMPTY_PAYLOAD"}
 
-        broker_order_id = event_payload.get("broker_order_id")
+        broker_order_id = event_payload.get("broker_order_id") or event_payload.get("order_id")
         if not broker_order_id or not isinstance(broker_order_id, str):
-            logger.warning("BrokerEventRouter payload missing mandatory string 'broker_order_id'.")
+            logger.warning("BrokerEventRouter payload missing mandatory string 'broker_order_id' or 'order_id'.")
             return {"status": "SKIPPED", "reason": "MISSING_BROKER_ORDER_ID"}
 
         db = session if session else SessionLocal()

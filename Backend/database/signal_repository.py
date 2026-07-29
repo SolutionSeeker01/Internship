@@ -207,6 +207,9 @@ def save_signal_and_return_id(
         session.close()
 
 
+import threading
+_duplicate_check_lock = threading.Lock()
+
 def check_duplicate_signal(
     symbol: str,
     action: str,
@@ -218,39 +221,40 @@ def check_duplicate_signal(
     """
     Checks if an active/accepted signal matching the exact strategy_id, symbol, action,
     entry, stoploss, and timeframe was received within the last 2 minutes.
-    Excludes CANCELLED/REJECTED signals.
+    Excludes CANCELLED/REJECTED signals. Uses a process-wide thread lock to eliminate race conditions.
     """
-    session = SessionLocal()
-    try:
-        sql = """
-            SELECT COUNT(*) 
-            FROM signals
-            WHERE UPPER(symbol) = :symbol
-              AND UPPER(action) = :action
-              AND entry = :entry
-              AND stoploss = :sl
-              AND timeframe = :tf
-              AND (
-                  (strategy_id IS NULL AND :strategy_id IS NULL)
-                  OR strategy_id = :strategy_id
-              )
-              AND status != 'CANCELLED'
-              AND created_at >= CURRENT_TIMESTAMP - INTERVAL '2 minutes';
-        """
-        count = session.execute(text(sql), {
-            "symbol": symbol.upper().strip(),
-            "action": action.upper().strip(),
-            "entry": entry,
-            "sl": sl,
-            "tf": str(tf).strip(),
-            "strategy_id": strategy_id
-        }).scalar()
-        return count > 0
-    except SQLAlchemyError as e:
-        logger.error(f"Error checking duplicate signal: {e}")
-        raise DatabaseException("Error checking duplicate signal from database.", original_exception=e)
-    finally:
-        session.close()
+    with _duplicate_check_lock:
+        session = SessionLocal()
+        try:
+            sql = """
+                SELECT COUNT(*) 
+                FROM signals
+                WHERE UPPER(symbol) = :symbol
+                  AND UPPER(action) = :action
+                  AND entry = :entry
+                  AND stoploss = :sl
+                  AND timeframe = :tf
+                  AND (
+                      (strategy_id IS NULL AND :strategy_id IS NULL)
+                      OR strategy_id = :strategy_id
+                  )
+                  AND status != 'CANCELLED'
+                  AND created_at >= CURRENT_TIMESTAMP - INTERVAL '2 minutes';
+            """
+            count = session.execute(text(sql), {
+                "symbol": symbol.upper().strip(),
+                "action": action.upper().strip(),
+                "entry": entry,
+                "sl": sl,
+                "tf": str(tf).strip(),
+                "strategy_id": strategy_id
+            }).scalar()
+            return count > 0
+        except SQLAlchemyError as e:
+            logger.error(f"Error checking duplicate signal: {e}")
+            return False
+        finally:
+            session.close()
 
 
 def get_accepted_signals(limit: int = 50, offset: int = 0) -> list:

@@ -50,8 +50,18 @@ class OrderManagerService:
             broker_factory: Factory providing client-bound BrokerInterface adapters.
             session_factory: Optional SQLAlchemy session factory.
         """
+        import threading
         self.broker_factory = broker_factory
         self.session_factory = session_factory
+        self._trade_locks: Dict[int, threading.Lock] = {}
+        self._global_lock = threading.Lock()
+
+    def _get_trade_lock(self, trade_id: int):
+        with self._global_lock:
+            if trade_id not in self._trade_locks:
+                import threading
+                self._trade_locks[trade_id] = threading.Lock()
+            return self._trade_locks[trade_id]
 
     def process_market_tick(
         self,
@@ -61,18 +71,23 @@ class OrderManagerService:
     ) -> Dict[str, Any]:
         """
         Processes a live market tick event for an active trade.
-
-        Flow:
-          1. Fetch trade record.
-          2. Reconstruct position state via position_state_reconstructor.
-          3. Evaluate Target Hits (TP1, TP2, TP3) or Initial SL Hit against LTP.
-          4. Evaluate Trailing Stop activation and updates via trailing_stop_engine.
-          5. If trigger condition met, generate WorkflowPlan via target_execution_workflow.
-          6. Execute WorkflowPlan via BrokerInterface and update repositories.
-
-        Returns:
-            Dict[str, Any]: Result summary of the tick processing.
         """
+        trade_lock = self._get_trade_lock(trade_id)
+        if not trade_lock.acquire(blocking=False):
+            logger.debug(f"Tick skipped for Trade ID {trade_id}: Lock already held by another tick worker.")
+            return {"status": "SKIPPED", "reason": "TRADE_LOCKED"}
+
+        try:
+            return self._process_market_tick_internal(trade_id, current_ltp, broker_account)
+        finally:
+            trade_lock.release()
+
+    def _process_market_tick_internal(
+        self,
+        trade_id: int,
+        current_ltp: Decimal,
+        broker_account: Optional[Any] = None
+    ) -> Dict[str, Any]:
         current_ltp = Decimal(str(current_ltp))
         db = self.session_factory() if self.session_factory else None
 
@@ -194,9 +209,13 @@ class OrderManagerService:
 
                     # Step 3: Handle Broker Outcomes
                     if sl_filled_at_broker:
-                        trade_repository.update_trade(trade.id, status="CLOSED", position_state="CLOSED", session=db)
+                        trade_repository.update_trade(trade.id, status="CLOSED", position_state="CLOSED", closed_at=datetime.now(), session=db)
                         if db and self.session_factory:
                             db.commit()
+                        from services.runtime.runtime_coordinator import get_runtime_coordinator
+                        coordinator = get_runtime_coordinator()
+                        if coordinator and coordinator._is_initialized:
+                            coordinator.close_and_unregister_trade(trade.id)
                         logger.info(f"Handover aborted for Trade ID {trade.id}: Initial SL executed at broker.")
                         return {"status": "SL_FILLED_AT_BROKER", "position_state": "CLOSED"}
 
@@ -275,17 +294,51 @@ class OrderManagerService:
 
                         broker_adapter = self.broker_factory.get_broker(entry_order.broker)
                         exit_step = [s for s in plan.steps if s.action_type == "PLACE_TARGET_LIMIT"][0]
+                        exit_spec = exit_step.order_spec
 
                         try:
-                            exit_res = broker_adapter.place_order(exit_step.order_spec.to_dict())
+                            # Pre-persist software exit order into orders table (H6)
+                            sw_order = order_repository.create_order(
+                                idempotency_key=exit_spec.idempotency_key,
+                                symbol=exit_spec.symbol,
+                                exchange=exit_spec.exchange,
+                                action=exit_spec.action,
+                                order_type=exit_spec.order_type,
+                                quantity=exit_spec.quantity,
+                                broker=exit_spec.broker,
+                                order_role="EXIT_ALL",
+                                parent_order_id=entry_order.id,
+                                price=exit_spec.price,
+                                status="PLACED",
+                                placed_at=datetime.now(),
+                                session=db
+                            )
+                            if db:
+                                db.commit()
+
+                            exit_res = broker_adapter.place_order(exit_spec.to_dict(), exit_spec.idempotency_key)
+                            confirm_broker_id = exit_res.get("broker_order_id") if isinstance(exit_res, dict) else getattr(exit_res, "broker_order_id", None)
                             order_status = str(exit_res.get("status", "")).upper()
 
+                            if confirm_broker_id and sw_order:
+                                order_repository.update_order(sw_order.id, broker_order_id=confirm_broker_id, session=db)
+                                if db:
+                                    db.commit()
+
                             if order_status in ("COMPLETE", "FILLED", "SUCCESS"):
-                                trade_repository.update_trade(trade.id, status="CLOSED", position_state="CLOSED", session=db)
+                                if sw_order:
+                                    order_repository.update_order(sw_order.id, status="COMPLETE", filled_quantity=exit_spec.quantity, average_price=float(limit_exit_price), session=db)
+                                trade_repository.update_trade(trade.id, status="CLOSED", position_state="CLOSED", closed_at=datetime.now(), session=db)
                                 if db and self.session_factory:
                                     db.commit()
+                                from services.runtime.runtime_coordinator import get_runtime_coordinator
+                                coordinator = get_runtime_coordinator()
+                                if coordinator and coordinator._is_initialized:
+                                    coordinator.close_and_unregister_trade(trade.id)
                                 return {"status": "SOFTWARE_SL_HIT", "position_state": "CLOSED", "exit_price": float(limit_exit_price)}
                             elif order_status == "REJECTED":
+                                if sw_order:
+                                    order_repository.update_order(sw_order.id, status="REJECTED", session=db)
                                 trade_repository.update_trade(trade.id, position_state="SOFTWARE_TRAILING_ACTIVE", session=db)
                                 if db and self.session_factory:
                                     db.commit()
@@ -478,6 +531,10 @@ class OrderManagerService:
                 trade = trade_repository.get_trade_by_execution_target_id(parent_order.execution_target_id, session=db)
                 if trade:
                     trade_repository.update_trade(trade.id, status="CLOSED", closed_at=datetime.now(), session=db)
+                    from services.runtime.runtime_coordinator import get_runtime_coordinator
+                    coordinator = get_runtime_coordinator()
+                    if coordinator and coordinator._is_initialized:
+                        coordinator.close_and_unregister_trade(trade.id)
                 executed_steps.append("CLOSE_TRADE")
 
                 from dev_tools.drm import global_event_bus, RuntimeEvent
@@ -627,6 +684,20 @@ class OrderManagerService:
                                 )
                 except Exception as sl_err:
                     logger.error(f"Failed to place initial protective Safety Stop-Loss for entry order {order.id}: {sl_err}", exc_info=True)
+
+            # If an exit order completes, update trade status to CLOSED and clean up runtime
+            if platform_status == "COMPLETE" and getattr(order, "order_role", "") in ("STOPLOSS", "EXIT_ALL", "TARGET_3"):
+                try:
+                    trade = trade_repository.get_trade_by_execution_target_id(order.execution_target_id, session=db)
+                    if trade and trade.status != "CLOSED":
+                        trade_repository.update_trade(trade.id, status="CLOSED", position_state="CLOSED", closed_at=datetime.now(), session=db)
+                        db.commit()
+                        from services.runtime.runtime_coordinator import get_runtime_coordinator
+                        coordinator = get_runtime_coordinator()
+                        if coordinator and coordinator._is_initialized:
+                            coordinator.close_and_unregister_trade(trade.id)
+                except Exception as exit_close_err:
+                    logger.error(f"Error closing/unregistering trade on exit order fill: {exit_close_err}", exc_info=True)
 
             from dev_tools.drm import global_event_bus, RuntimeEvent
             global_event_bus.publish(RuntimeEvent(

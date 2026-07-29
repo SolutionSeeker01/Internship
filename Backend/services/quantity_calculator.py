@@ -88,6 +88,9 @@ def calculate_order_quantity(
     else:
         quantity = raw_qty
 
+    # Single-share cap for initial live test validation
+    quantity = min(1, quantity)
+
     # Check minimum quantity requirement
     if quantity < 1:
         logger.warning(f"Quantity Calculator rejected trade: calculated quantity ({quantity}) < 1")

@@ -85,14 +85,16 @@ def calculate_targets(action: str, entry: float, stoploss: float) -> SignalTarge
             "Zero-risk signals cannot produce meaningful targets."
         )
 
+    from utils.tick_size import normalize_tick_size
+
     if action_upper == "BUY":
-        t1 = round(entry + (1 * risk), 2)
-        t2 = round(entry + (2 * risk), 2)
-        t3 = round(entry + (3 * risk), 2)
+        t1 = float(normalize_tick_size(entry + (1 * risk)))
+        t2 = float(normalize_tick_size(entry + (2 * risk)))
+        t3 = float(normalize_tick_size(entry + (3 * risk)))
     else:  # SELL
-        t1 = round(entry - (1 * risk), 2)
-        t2 = round(entry - (2 * risk), 2)
-        t3 = round(entry - (3 * risk), 2)
+        t1 = float(normalize_tick_size(entry - (1 * risk)))
+        t2 = float(normalize_tick_size(entry - (2 * risk)))
+        t3 = float(normalize_tick_size(entry - (3 * risk)))
 
     targets = SignalTargets(t1=t1, t2=t2, t3=t3)
 
